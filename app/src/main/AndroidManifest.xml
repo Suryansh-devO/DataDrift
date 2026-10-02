@@ -1,0 +1,165 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<!-- ============================================================
+     DataDrift - Android Manifest
+     ============================================================
+
+     Permissions:
+
+     1. Usage Access
+        -> Mobile data usage read karne ke liye.
+
+     2. Network State
+        -> Mobile data / Wi-Fi detect karne ke liye.
+
+     3. Internet
+        -> Network monitoring ke liye.
+
+     4. Foreground Service
+        -> Background monitoring service ke liye.
+
+     5. Foreground Service Data Sync
+        -> Android 14+ foreground service support.
+
+     6. System Alert Window
+        -> Status bar par live download speed overlay.
+
+     7. Notifications
+        -> DataDrift monitoring aur alert notifications.
+
+     ============================================================ -->
+
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- ========================================================
+         INTERNET
+         ======================================================== -->
+
+    <uses-permission
+        android:name="android.permission.INTERNET" />
+
+    <!-- ========================================================
+         NETWORK STATE
+         ======================================================== -->
+
+    <uses-permission
+        android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!-- ========================================================
+         USAGE ACCESS
+         ========================================================
+         Important:
+         Ye normal runtime permission nahi hai.
+         User ko Settings se manually Usage Access dena hota hai.
+         ======================================================== -->
+
+    <uses-permission
+        android:name="android.permission.PACKAGE_USAGE_STATS" />
+
+    <!-- ========================================================
+         DRAW OVER OTHER APPS
+         ========================================================
+         Status bar par live speed overlay ke liye.
+         ======================================================== -->
+
+    <uses-permission
+        android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+
+    <!-- ========================================================
+         FOREGROUND SERVICE
+         ======================================================== -->
+
+    <uses-permission
+        android:name="android.permission.FOREGROUND_SERVICE" />
+
+    <!-- ========================================================
+         FOREGROUND SERVICE - DATA SYNC
+         ========================================================
+         Android 14+ ke liye.
+         ======================================================== -->
+
+    <uses-permission
+        android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+
+    <!-- ========================================================
+         NOTIFICATIONS
+         ========================================================
+         Android 13+ par notification permission.
+         ======================================================== -->
+
+    <uses-permission
+        android:name="android.permission.POST_NOTIFICATIONS" />
+
+
+    <!-- ========================================================
+         APPLICATION
+         ======================================================== -->
+
+    <application
+
+        android:allowBackup="true"
+
+        android:icon="@mipmap/ic_launcher"
+
+        android:label="DataDrift"
+
+        android:roundIcon="@mipmap/ic_launcher_round"
+
+        android:supportsRtl="true"
+
+        android:theme="@style/Theme.DataDrift">
+
+
+        <!-- ====================================================
+             MAIN ACTIVITY
+             ==================================================== -->
+
+        <activity
+
+            android:name=".MainActivity"
+
+            android:exported="true">
+
+            <intent-filter>
+
+                <action
+                    android:name="android.intent.action.MAIN" />
+
+                <category
+                    android:name="android.intent.category.LAUNCHER" />
+
+            </intent-filter>
+
+        </activity>
+
+
+        <!-- ====================================================
+             DATA MONITOR SERVICE
+             ====================================================
+
+             Ye service:
+
+             - Mobile data usage monitor karti hai
+             - Custom usage calculate karti hai
+             - Daily Plan check karti hai
+             - Data alerts check karti hai
+             - Live speed calculate karti hai
+             - Notification update karti hai
+             - Status bar speed overlay show karti hai
+
+             ==================================================== -->
+
+        <service
+
+            android:name=".service.DataMonitorService"
+
+            android:enabled="true"
+
+            android:exported="false"
+
+            android:foregroundServiceType="dataSync" />
+
+
+    </application>
+
+</manifest>
