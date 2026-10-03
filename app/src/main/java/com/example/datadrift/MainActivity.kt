@@ -1,6 +1,6 @@
 
 package com.example.datadrift
-// YSR
+// YSR v1
 // ============================================================
 // DataDrift - MainActivity
 // ============================================================
@@ -74,6 +74,7 @@ import androidx.compose.material.icons.filled.Settings
 
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -98,6 +99,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -526,6 +528,18 @@ fun DataDriftScreen(
     }
 
 
+    var dailyEndHour by remember {
+
+        mutableStateOf(23)
+    }
+
+
+    var dailyEndMinute by remember {
+
+        mutableStateOf(59)
+    }
+
+
     val dailyAlerts =
         remember {
 
@@ -562,15 +576,23 @@ fun DataDriftScreen(
 
 
     // ========================================================
-    // DAILY START TIME DIALOG
+    // DAILY START + END TIME DIALOG
     // ========================================================
 
-    var showDailyStartDialog by remember {
+    var showDailyTimeDialog by remember {
 
         mutableStateOf(false)
     }
 
 
+    // Error shown when Start/End time is invalid.
+    var dailyTimeError by remember {
+
+        mutableStateOf("")
+    }
+
+
+    // Selected Start Time
     var dailyHourText by remember {
 
         mutableStateOf("12")
@@ -586,6 +608,25 @@ fun DataDriftScreen(
     var dailyPeriod by remember {
 
         mutableStateOf("AM")
+    }
+
+
+    // Selected End Time
+    var dailyEndHourText by remember {
+
+        mutableStateOf("11")
+    }
+
+
+    var dailyEndMinuteText by remember {
+
+        mutableStateOf("59")
+    }
+
+
+    var dailyEndPeriod by remember {
+
+        mutableStateOf("PM")
     }
 
 
@@ -645,6 +686,14 @@ fun DataDriftScreen(
 
             dailyStartMinute =
                 savedPlan.startMinute
+
+
+            dailyEndHour =
+                savedPlan.endHour
+
+
+            dailyEndMinute =
+                savedPlan.endMinute
 
 
             dailyAlerts.clear()
@@ -1281,7 +1330,22 @@ fun DataDriftScreen(
             }
 
 
+
+
+// =================================================
+            // MOBILE REAL-TIME SPEED
             // =================================================
+
+            RealTimeSpeedCard(
+
+                downloadSpeed =
+                    downloadSpeed,
+
+                uploadSpeed =
+                    uploadSpeed
+            )
+
+// =================================================
             // TODAY + CUSTOM
             // =================================================
 
@@ -1334,8 +1398,7 @@ fun DataDriftScreen(
                 )
             }
 
-
-            // =================================================
+// =================================================
             // WI-FI USAGE
             // =================================================
 
@@ -1354,108 +1417,7 @@ fun DataDriftScreen(
                     dataRepository::formatBytes
             )
 
-
-            // =================================================
-            // STATUS BAR SPEED CONTROL
-            // =================================================
-
-            StatusBarSpeedCard(
-
-                enabled =
-                    statusBarSpeedEnabled,
-
-                onEnabledChanged = {
-
-                        enabled ->
-
-                    statusBarSpeedEnabled =
-                        enabled
-
-
-                    appPreferences
-                        .edit()
-                        .putBoolean(
-
-                            DataMonitorService
-                                .KEY_STATUS_BAR_SPEED_ENABLED,
-
-                            enabled
-                        )
-                        .apply()
-
-
-                    if (
-                        monitoringEnabled
-                    ) {
-
-                        startDataMonitorService(
-                            context
-                        )
-                    }
-                },
-
-                onSettingsClick = {
-
-                    statusBarXText =
-                        appPreferences
-                            .getInt(
-
-                                DataMonitorService
-                                    .KEY_STATUS_BAR_SPEED_X,
-
-                                DataMonitorService
-                                    .DEFAULT_STATUS_BAR_SPEED_X
-                            )
-                            .toString()
-
-
-                    statusBarYText =
-                        appPreferences
-                            .getInt(
-
-                                DataMonitorService
-                                    .KEY_STATUS_BAR_SPEED_Y,
-
-                                DataMonitorService
-                                    .DEFAULT_STATUS_BAR_SPEED_Y
-                            )
-                            .toString()
-
-
-                    statusBarTextSizeText =
-                        appPreferences
-                            .getFloat(
-
-                                DataMonitorService
-                                    .KEY_STATUS_BAR_SPEED_TEXT_SIZE,
-
-                                DataMonitorService
-                                    .DEFAULT_STATUS_BAR_SPEED_TEXT_SIZE
-                            )
-                            .toString()
-
-
-                    showStatusBarSettings =
-                        true
-                }
-            )
-
-
-            // =================================================
-            // MOBILE REAL-TIME SPEED
-            // =================================================
-
-            RealTimeSpeedCard(
-
-                downloadSpeed =
-                    downloadSpeed,
-
-                uploadSpeed =
-                    uploadSpeed
-            )
-
-
-            // =================================================
+// =================================================
             // DATA LIMIT ALERTS
             // =================================================
 
@@ -1630,8 +1592,7 @@ fun DataDriftScreen(
                 }
             }
 
-
-            // =================================================
+// =================================================
             // DAILY DATA PLAN
             // =================================================
 
@@ -1654,6 +1615,12 @@ fun DataDriftScreen(
 
                 startMinute =
                     dailyStartMinute,
+
+                endHour =
+                    dailyEndHour,
+
+                endMinute =
+                    dailyEndMinute,
 
                 alerts =
                     dailyAlerts,
@@ -1787,8 +1754,8 @@ fun DataDriftScreen(
 
                 onChangeTime = {
 
-                    val displayHour =
-
+                    // Start time fields
+                    val startDisplayHour =
                         when {
 
                             dailyStartHour == 0 ->
@@ -1803,33 +1770,52 @@ fun DataDriftScreen(
 
 
                     dailyHourText =
-                        displayHour.toString()
+                        startDisplayHour.toString()
 
 
                     dailyMinuteText =
                         dailyStartMinute
                             .toString()
-                            .padStart(
-                                2,
-                                '0'
-                            )
+                            .padStart(2, '0')
 
 
                     dailyPeriod =
+                        if (dailyStartHour >= 12) "PM" else "AM"
 
-                        if (
-                            dailyStartHour >= 12
-                        ) {
 
-                            "PM"
+                    // End time fields
+                    val endDisplayHour =
+                        when {
 
-                        } else {
+                            dailyEndHour == 0 ->
+                                12
 
-                            "AM"
+                            dailyEndHour > 12 ->
+                                dailyEndHour - 12
+
+                            else ->
+                                dailyEndHour
                         }
 
 
-                    showDailyStartDialog =
+                    dailyEndHourText =
+                        endDisplayHour.toString()
+
+
+                    dailyEndMinuteText =
+                        dailyEndMinute
+                            .toString()
+                            .padStart(2, '0')
+
+
+                    dailyEndPeriod =
+                        if (dailyEndHour >= 12) "PM" else "AM"
+
+
+                    dailyTimeError =
+                        ""
+
+                    showDailyTimeDialog =
                         true
                 },
 
@@ -1861,6 +1847,12 @@ fun DataDriftScreen(
 
                                 startMinute =
                                     dailyStartMinute,
+
+                                endHour =
+                                    dailyEndHour,
+
+                                endMinute =
+                                    dailyEndMinute,
 
                                 isEnabled =
                                     dailyPlanEnabled,
@@ -1948,8 +1940,92 @@ fun DataDriftScreen(
                 }
             )
 
-
+// =================================================
+            // STATUS BAR SPEED CONTROL
             // =================================================
+
+            StatusBarSpeedCard(
+
+                enabled =
+                    statusBarSpeedEnabled,
+
+                onEnabledChanged = {
+
+                        enabled ->
+
+                    statusBarSpeedEnabled =
+                        enabled
+
+
+                    appPreferences
+                        .edit()
+                        .putBoolean(
+
+                            DataMonitorService
+                                .KEY_STATUS_BAR_SPEED_ENABLED,
+
+                            enabled
+                        )
+                        .apply()
+
+
+                    if (
+                        monitoringEnabled
+                    ) {
+
+                        startDataMonitorService(
+                            context
+                        )
+                    }
+                },
+
+                onSettingsClick = {
+
+                    statusBarXText =
+                        appPreferences
+                            .getInt(
+
+                                DataMonitorService
+                                    .KEY_STATUS_BAR_SPEED_X,
+
+                                DataMonitorService
+                                    .DEFAULT_STATUS_BAR_SPEED_X
+                            )
+                            .toString()
+
+
+                    statusBarYText =
+                        appPreferences
+                            .getInt(
+
+                                DataMonitorService
+                                    .KEY_STATUS_BAR_SPEED_Y,
+
+                                DataMonitorService
+                                    .DEFAULT_STATUS_BAR_SPEED_Y
+                            )
+                            .toString()
+
+
+                    statusBarTextSizeText =
+                        appPreferences
+                            .getFloat(
+
+                                DataMonitorService
+                                    .KEY_STATUS_BAR_SPEED_TEXT_SIZE,
+
+                                DataMonitorService
+                                    .DEFAULT_STATUS_BAR_SPEED_TEXT_SIZE
+                            )
+                            .toString()
+
+
+                    showStatusBarSettings =
+                        true
+                }
+            )
+
+// =================================================
             // MONTHLY
             // =================================================
 
@@ -2165,7 +2241,8 @@ fun DataDriftScreen(
                     Row {
 
                         SmallButton(
-                            "MB"
+                            text = "MB",
+                            selected = customLimitUnit == "MB"
                         ) {
 
                             customLimitUnit =
@@ -2181,7 +2258,8 @@ fun DataDriftScreen(
 
 
                         SmallButton(
-                            "GB"
+                            text = "GB",
+                            selected = customLimitUnit == "GB"
                         ) {
 
                             customLimitUnit =
@@ -2361,7 +2439,8 @@ fun DataDriftScreen(
                     Row {
 
                         SmallButton(
-                            "MB"
+                            text = "MB",
+                            selected = dailyAlertUnit == "MB"
                         ) {
 
                             dailyAlertUnit =
@@ -2377,7 +2456,8 @@ fun DataDriftScreen(
 
 
                         SmallButton(
-                            "GB"
+                            text = "GB",
+                            selected = dailyAlertUnit == "GB"
                         ) {
 
                             dailyAlertUnit =
@@ -2527,19 +2607,19 @@ fun DataDriftScreen(
     }
 
 
-    // ========================================================
-    // DAILY START TIME DIALOG
-    // ========================================================
+    // ============================================================
+    // DAILY START + END TIME DIALOG
+    // ============================================================
 
     if (
-        showDailyStartDialog
+        showDailyTimeDialog
     ) {
 
         AlertDialog(
 
             onDismissRequest = {
 
-                showDailyStartDialog =
+                showDailyTimeDialog =
                     false
             },
 
@@ -2547,7 +2627,7 @@ fun DataDriftScreen(
             title = {
 
                 Text(
-                    "Daily Start Time"
+                    "Daily Start & End Time"
                 )
             },
 
@@ -2556,110 +2636,182 @@ fun DataDriftScreen(
 
                 Column {
 
-                    Row {
+                    // ------------------------------------------------
+                    // START TIME
+                    // ------------------------------------------------
 
-                        OutlinedTextField(
-
-                            value =
-                                dailyHourText,
-
-                            onValueChange = {
-
-                                dailyHourText =
-                                    it.filter {
-                                            c ->
-                                        c.isDigit()
-                                    }
-                            },
-
-                            modifier =
-                                Modifier.weight(
-                                    1f
-                                ),
-
-                            label = {
-
-                                Text(
-                                    "Hour"
-                                )
-                            },
-
-                            singleLine =
-                                true
-                        )
-
-
-                        Spacer(
-                            Modifier.width(
-                                8.dp
-                            )
-                        )
-
-
-                        OutlinedTextField(
-
-                            value =
-                                dailyMinuteText,
-
-                            onValueChange = {
-
-                                dailyMinuteText =
-                                    it.filter {
-                                            c ->
-                                        c.isDigit()
-                                    }
-                            },
-
-                            modifier =
-                                Modifier.weight(
-                                    1f
-                                ),
-
-                            label = {
-
-                                Text(
-                                    "Minute"
-                                )
-                            },
-
-                            singleLine =
-                                true
-                        )
-                    }
+                    Text(
+                        "Start Time",
+                        fontWeight = FontWeight.Bold
+                    )
 
 
                     Spacer(
-                        Modifier.height(
-                            10.dp
-                        )
+                        Modifier.height(6.dp)
                     )
 
 
                     Row {
 
-                        SmallButton(
-                            "AM"
-                        ) {
+                        OutlinedTextField(
 
-                            dailyPeriod =
-                                "AM"
-                        }
+                            value = dailyHourText,
 
+                            onValueChange = {
+                                dailyHourText =
+                                    it.filter(Char::isDigit)
+                            },
 
-                        Spacer(
-                            Modifier.width(
-                                8.dp
-                            )
+                            modifier = Modifier.weight(1f),
+
+                            label = {
+                                Text("Hour")
+                            },
+
+                            singleLine = true
                         )
 
 
-                        SmallButton(
-                            "PM"
-                        ) {
+                        Spacer(Modifier.width(8.dp))
 
-                            dailyPeriod =
-                                "PM"
+
+                        OutlinedTextField(
+
+                            value = dailyMinuteText,
+
+                            onValueChange = {
+                                dailyMinuteText =
+                                    it.filter(Char::isDigit)
+                            },
+
+                            modifier = Modifier.weight(1f),
+
+                            label = {
+                                Text("Minute")
+                            },
+
+                            singleLine = true
+                        )
+                    }
+
+
+                    Spacer(Modifier.height(6.dp))
+
+
+                    Row {
+
+                        SmallButton(
+                            text = "AM",
+                            selected = dailyPeriod == "AM"
+                        ) {
+                            dailyPeriod = "AM"
                         }
+
+                        Spacer(Modifier.width(8.dp))
+
+                        SmallButton(
+                            text = "PM",
+                            selected = dailyPeriod == "PM"
+                        ) {
+                            dailyPeriod = "PM"
+                        }
+                    }
+
+
+                    Spacer(Modifier.height(14.dp))
+
+
+                    // ------------------------------------------------
+                    // END TIME
+                    // ------------------------------------------------
+
+                    Text(
+                        "End Time",
+                        fontWeight = FontWeight.Bold
+                    )
+
+
+                    Spacer(Modifier.height(6.dp))
+
+
+                    Row {
+
+                        OutlinedTextField(
+
+                            value = dailyEndHourText,
+
+                            onValueChange = {
+                                dailyEndHourText =
+                                    it.filter(Char::isDigit)
+                            },
+
+                            modifier = Modifier.weight(1f),
+
+                            label = {
+                                Text("Hour")
+                            },
+
+                            singleLine = true
+                        )
+
+
+                        Spacer(Modifier.width(8.dp))
+
+
+                        OutlinedTextField(
+
+                            value = dailyEndMinuteText,
+
+                            onValueChange = {
+                                dailyEndMinuteText =
+                                    it.filter(Char::isDigit)
+                            },
+
+                            modifier = Modifier.weight(1f),
+
+                            label = {
+                                Text("Minute")
+                            },
+
+                            singleLine = true
+                        )
+                    }
+
+
+                    Spacer(Modifier.height(6.dp))
+
+
+                    Row {
+
+                        SmallButton(
+                            text = "AM",
+                            selected = dailyEndPeriod == "AM"
+                        ) {
+                            dailyEndPeriod = "AM"
+                        }
+
+                        Spacer(Modifier.width(8.dp))
+
+                        SmallButton(
+                            text = "PM",
+                            selected = dailyEndPeriod == "PM"
+                        ) {
+                            dailyEndPeriod = "PM"
+                        }
+                    }
+
+
+                    if (dailyTimeError.isNotEmpty()) {
+
+                        Spacer(
+                            Modifier.height(10.dp)
+                        )
+
+                        Text(
+                            text = dailyTimeError,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold
+                        )
                     }
                 }
             },
@@ -2671,42 +2823,93 @@ fun DataDriftScreen(
 
                     onClick = {
 
-                        val hour =
-                            dailyHourText
-                                .toIntOrNull()
+                        val startHour12 =
+                            dailyHourText.toIntOrNull()
 
+                        val startMinute =
+                            dailyMinuteText.toIntOrNull()
 
-                        val minute =
-                            dailyMinuteText
-                                .toIntOrNull()
+                        val endHour12 =
+                            dailyEndHourText.toIntOrNull()
 
+                        val endMinute =
+                            dailyEndMinuteText.toIntOrNull()
 
                         if (
-                            hour != null &&
-                            minute != null &&
-                            hour in 1..12 &&
-                            minute in 0..59
+                            startHour12 == null ||
+                            startMinute == null ||
+                            endHour12 == null ||
+                            endMinute == null
                         ) {
 
-                            dailyStartHour =
+                            dailyTimeError =
+                                "Please enter Start and End time."
+
+                        } else if (
+                            startHour12 !in 1..12 ||
+                            endHour12 !in 1..12 ||
+                            startMinute !in 0..59 ||
+                            endMinute !in 0..59
+                        ) {
+
+                            dailyTimeError =
+                                "Enter a valid time. Hour: 1-12, Minute: 0-59."
+
+                        } else {
+
+                            val newStartHour =
                                 convertTo24Hour(
-
-                                    hour,
-
+                                    startHour12,
                                     dailyPeriod
                                 )
 
+                            val newEndHour =
+                                convertTo24Hour(
+                                    endHour12,
+                                    dailyEndPeriod
+                                )
 
-                            dailyStartMinute =
-                                minute
+                            // ------------------------------------------------
+                            // Same-day window only.
+                            // End must be AFTER Start.
+                            // ------------------------------------------------
 
+                            val startMinutes =
+                                newStartHour * 60 + startMinute
 
-                            dailyPlanSaved =
-                                false
+                            val endMinutes =
+                                newEndHour * 60 + endMinute
 
+                            if (
+                                endMinutes <= startMinutes
+                            ) {
 
-                            showDailyStartDialog =
-                                false
+                                dailyTimeError =
+                                    "End Time must be after Start Time."
+
+                            } else {
+
+                                dailyStartHour =
+                                    newStartHour
+
+                                dailyStartMinute =
+                                    startMinute
+
+                                dailyEndHour =
+                                    newEndHour
+
+                                dailyEndMinute =
+                                    endMinute
+
+                                dailyPlanSaved =
+                                    false
+
+                                dailyTimeError =
+                                    ""
+
+                                showDailyTimeDialog =
+                                    false
+                            }
                         }
                     }
                 ) {
@@ -2723,8 +2926,7 @@ fun DataDriftScreen(
                 TextButton(
 
                     onClick = {
-
-                        showDailyStartDialog =
+                        showDailyTimeDialog =
                             false
                     }
                 ) {
@@ -2974,6 +3176,11 @@ fun DataDriftScreen(
 // ============================================================
 // USAGE CARD
 // ============================================================
+// Compact layout:
+// - Total usage always stays on ONE line.
+// - Download + Upload stay on ONE line.
+// - Font automatically becomes smaller for large values.
+// ============================================================
 
 @Composable
 fun UsageCard(
@@ -2992,74 +3199,95 @@ fun UsageCard(
 
 ) {
 
+    val totalText =
+        formatBytes(
+            usage.totalBytes
+        )
+
+    val downloadText =
+        formatBytes(
+            usage.downloadBytes
+        )
+
+    val uploadText =
+        formatBytes(
+            usage.uploadBytes
+        )
+
     Card(
         modifier
     ) {
 
         Column(
             Modifier.padding(
-                14.dp
+                12.dp
             )
         ) {
 
-            Text(
+            // ------------------------------------------------
+            // TITLE
+            // ------------------------------------------------
 
+            Text(
                 title,
-
-                fontSize =
-                    18.sp,
-
-                fontWeight =
-                    FontWeight.Bold
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                softWrap = false
             )
-
 
             Spacer(
-                Modifier.height(
-                    6.dp
-                )
+                Modifier.height(5.dp)
             )
 
+            // ------------------------------------------------
+            // TOTAL - ONE LINE
+            // ------------------------------------------------
 
             Text(
-
-                formatBytes(
-                    usage.totalBytes
-                ),
-
+                totalText,
                 fontSize =
-                    24.sp,
-
-                fontWeight =
-                    FontWeight.Bold
+                    compactUsageFontSize(
+                        totalText
+                    ),
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                softWrap = false
             )
-
 
             Spacer(
-                Modifier.height(
-                    6.dp
+                Modifier.height(5.dp)
+            )
+
+            // ------------------------------------------------
+            // DOWNLOAD + UPLOAD - ONE LINE
+            // ------------------------------------------------
+
+            Row(
+                modifier =
+                    Modifier.fillMaxWidth(),
+                verticalAlignment =
+                    Alignment.CenterVertically
+            ) {
+
+                Text(
+                    "↓ $downloadText",
+                    modifier =
+                        Modifier.weight(1f),
+                    fontSize = 13.sp,
+                    maxLines = 1,
+                    softWrap = false
                 )
-            )
 
-
-            Text(
-
-                "↓ ${
-                    formatBytes(
-                        usage.downloadBytes
-                    )
-                }"
-            )
-
-
-            Text(
-
-                "↑ ${
-                    formatBytes(
-                        usage.uploadBytes
-                    )
-                }"
-            )
+                Text(
+                    "↑ $uploadText",
+                    modifier =
+                        Modifier.weight(1f),
+                    fontSize = 13.sp,
+                    maxLines = 1,
+                    softWrap = false
+                )
+            }
         }
     }
 }
@@ -3067,6 +3295,11 @@ fun UsageCard(
 
 // ============================================================
 // WI-FI USAGE CARD
+// ============================================================
+// Compact layout:
+// - Wi-Fi total stays on ONE line.
+// - Download + Upload stay on ONE line.
+// - Live Wi-Fi speed stays on ONE line.
 // ============================================================
 
 @Composable
@@ -3086,13 +3319,28 @@ fun WifiUsageCard(
 
 ) {
 
+    val totalText =
+        formatBytes(
+            usage.totalBytes
+        )
+
+    val downloadText =
+        formatBytes(
+            usage.downloadBytes
+        )
+
+    val uploadText =
+        formatBytes(
+            usage.uploadBytes
+        )
+
     Card(
         Modifier.fillMaxWidth()
     ) {
 
         Column(
             Modifier.padding(
-                14.dp
+                10.dp
             )
         ) {
 
@@ -3101,131 +3349,144 @@ fun WifiUsageCard(
             // ------------------------------------------------
 
             Text(
-
                 "Wi-Fi Usage",
-
-                fontSize =
-                    18.sp,
-
-                fontWeight =
-                    FontWeight.Bold
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                softWrap = false
             )
-
 
             Spacer(
-                Modifier.height(
-                    6.dp
-                )
+                Modifier.height(2.dp)
             )
 
-
             // ------------------------------------------------
-            // TOTAL
+            // TOTAL - ONE LINE
             // ------------------------------------------------
 
             Text(
-
-                formatBytes(
-                    usage.totalBytes
-                ),
-
+                totalText,
                 fontSize =
-                    24.sp,
-
-                fontWeight =
-                    FontWeight.Bold
+                    compactUsageFontSize(
+                        totalText
+                    ),
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                softWrap = false
             )
-
 
             Spacer(
-                Modifier.height(
-                    6.dp
-                )
+                Modifier.height(3.dp)
             )
 
-
             // ------------------------------------------------
-            // TOTAL DOWNLOAD / UPLOAD
+            // DOWNLOAD + UPLOAD - ONE LINE
             // ------------------------------------------------
 
-            Row {
+            Row(
+                modifier =
+                    Modifier.fillMaxWidth(),
+                verticalAlignment =
+                    Alignment.CenterVertically
+            ) {
 
                 Text(
-
-                    "↓ ${
-                        formatBytes(
-                            usage.downloadBytes
-                        )
-                    }"
+                    "↓ $downloadText",
+                    modifier =
+                        Modifier.weight(1f),
+                    fontSize = 13.sp,
+                    maxLines = 1,
+                    softWrap = false
                 )
-
-
-                Spacer(
-                    Modifier.weight(
-                        1f
-                    )
-                )
-
 
                 Text(
-
-                    "↑ ${
-                        formatBytes(
-                            usage.uploadBytes
-                        )
-                    }"
+                    "↑ $uploadText",
+                    modifier =
+                        Modifier.weight(1f),
+                    fontSize = 13.sp,
+                    maxLines = 1,
+                    softWrap = false
                 )
             }
 
-
             Spacer(
-                Modifier.height(
-                    10.dp
-                )
+                Modifier.height(5.dp)
             )
-
 
             // ------------------------------------------------
             // LIVE WI-FI SPEED
             // ------------------------------------------------
 
             Text(
-
                 "Real-time Wi-Fi speed",
-
-                fontWeight =
-                    FontWeight.Bold
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                softWrap = false
             )
-
 
             Spacer(
-                Modifier.height(
-                    4.dp
-                )
+                Modifier.height(3.dp)
             )
 
-
-            Row {
-
-                Text(
-                    "↓ $wifiDownloadSpeed"
-                )
-
-
-                Spacer(
-                    Modifier.weight(
-                        1f
-                    )
-                )
-
+            Row(
+                modifier =
+                    Modifier.fillMaxWidth(),
+                verticalAlignment =
+                    Alignment.CenterVertically
+            ) {
 
                 Text(
-                    "↑ $wifiUploadSpeed"
+                    "↓ $wifiDownloadSpeed",
+                    modifier =
+                        Modifier.weight(1f),
+                    fontSize = 13.sp,
+                    maxLines = 1,
+                    softWrap = false
+                )
+
+                Text(
+                    "↑ $wifiUploadSpeed",
+                    modifier =
+                        Modifier.weight(1f),
+                    fontSize = 13.sp,
+                    maxLines = 1,
+                    softWrap = false
                 )
             }
         }
     }
 }
+
+
+// ============================================================
+// COMPACT USAGE FONT SIZE
+// ============================================================
+// Keeps very large values visually smaller so the card
+// does not become unnecessarily tall or wrap to another line.
+// ============================================================
+
+fun compactUsageFontSize(
+    text:
+    String
+) =
+    when {
+
+        text.length <= 9 ->
+            24.sp
+
+        text.length <= 12 ->
+            22.sp
+
+        text.length <= 15 ->
+            20.sp
+
+        text.length <= 18 ->
+            18.sp
+
+        else ->
+            16.sp
+    }
 
 
 // ============================================================
@@ -3568,59 +3829,26 @@ fun DataAlertCard(
 @Composable
 fun DailyDataPlanCard(
 
-    enabled:
-    Boolean,
-
-    saved:
-    Boolean,
-
-    totalText:
-    String,
-
-    totalUnit:
-    String,
-
-    startHour:
-    Int,
-
-    startMinute:
-    Int,
-
-    alerts:
-    List<DailyDataAlert>,
-
-    alertsExpanded:
-    Boolean,
-
-    onAlertsExpandedChanged:
-        () -> Unit,
-
-    onToggle:
-        () -> Unit,
-
-    onEdit:
-        () -> Unit,
-
-    onTotalTextChanged:
-        (String) -> Unit,
-
-    onTotalUnitChanged:
-        (String) -> Unit,
-
-    onAddAlert:
-        () -> Unit,
-
-    onChangeTime:
-        () -> Unit,
-
-    onSave:
-        () -> Unit,
-
-    onAlertEnabledChanged:
-        (Int) -> Unit,
-
-    onAlertDelete:
-        (Int) -> Unit
+    enabled: Boolean,
+    saved: Boolean,
+    totalText: String,
+    totalUnit: String,
+    startHour: Int,
+    startMinute: Int,
+    endHour: Int,
+    endMinute: Int,
+    alerts: List<DailyDataAlert>,
+    alertsExpanded: Boolean,
+    onAlertsExpandedChanged: () -> Unit,
+    onToggle: () -> Unit,
+    onEdit: () -> Unit,
+    onTotalTextChanged: (String) -> Unit,
+    onTotalUnitChanged: (String) -> Unit,
+    onAddAlert: () -> Unit,
+    onChangeTime: () -> Unit,
+    onSave: () -> Unit,
+    onAlertEnabledChanged: (Int) -> Unit,
+    onAlertDelete: (Int) -> Unit
 
 ) {
 
@@ -3629,9 +3857,7 @@ fun DailyDataPlanCard(
     ) {
 
         Column(
-            Modifier.padding(
-                16.dp
-            )
+            Modifier.padding(16.dp)
         ) {
 
             // ------------------------------------------------
@@ -3639,66 +3865,29 @@ fun DailyDataPlanCard(
             // ------------------------------------------------
 
             Row(
-
-                verticalAlignment =
-                    Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically
             ) {
 
                 Text(
-
                     "Daily Data Plan",
-
-                    modifier =
-                        Modifier.weight(
-                            1f
-                        ),
-
-                    fontSize =
-                        22.sp,
-
-                    fontWeight =
-                        FontWeight.Bold
+                    modifier = Modifier.weight(1f),
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Bold
                 )
-
 
                 Text(
-
-                    if (
-                        enabled
-                    ) {
-
-                        "ON"
-
-                    } else {
-
-                        "OFF"
-                    }
+                    if (enabled) "ON" else "OFF"
                 )
 
-
                 Switch(
-
-                    checked =
-                        enabled,
-
-                    onCheckedChange = {
-
-                        onToggle()
-                    },
-
-                    modifier =
-                        Modifier.scale(
-                            0.75f
-                        )
+                    checked = enabled,
+                    onCheckedChange = { onToggle() },
+                    modifier = Modifier.scale(0.75f)
                 )
             }
 
 
-            Spacer(
-                Modifier.height(
-                    14.dp
-                )
-            )
+            Spacer(Modifier.height(14.dp))
 
 
             // ------------------------------------------------
@@ -3706,60 +3895,30 @@ fun DailyDataPlanCard(
             // ------------------------------------------------
 
             Text(
-
                 "Total Daily Data",
-
-                fontSize =
-                    18.sp,
-
-                fontWeight =
-                    FontWeight.Bold
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold
             )
 
+            Spacer(Modifier.height(8.dp))
 
-            Spacer(
-                Modifier.height(
-                    8.dp
-                )
-            )
-
-
-            if (
-                saved
-            ) {
+            if (saved) {
 
                 Row(
-
-                    verticalAlignment =
-                        Alignment.CenterVertically
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
 
                     Text(
-
                         "$totalText $totalUnit",
-
-                        modifier =
-                            Modifier.weight(
-                                1f
-                            ),
-
-                        fontSize =
-                            24.sp,
-
-                        fontWeight =
-                            FontWeight.Bold
+                        modifier = Modifier.weight(1f),
+                        fontSize = 24.sp,
+                        fontWeight = FontWeight.Bold
                     )
 
-
                     OutlinedButton(
-
-                        onClick =
-                            onEdit
+                        onClick = onEdit
                     ) {
-
-                        Text(
-                            "Edit"
-                        )
+                        Text("Edit")
                     }
                 }
 
@@ -3768,142 +3927,99 @@ fun DailyDataPlanCard(
                 Row {
 
                     OutlinedTextField(
-
-                        value =
-                            totalText,
-
-                        onValueChange =
-                            onTotalTextChanged,
-
-                        modifier =
-                            Modifier.weight(
-                                1f
-                            ),
-
-                        label = {
-
-                            Text(
-                                "Total amount"
-                            )
-                        },
-
-                        singleLine =
-                            true
+                        value = totalText,
+                        onValueChange = onTotalTextChanged,
+                        modifier = Modifier.weight(1f),
+                        label = { Text("Total amount") },
+                        singleLine = true
                     )
 
-
-                    Spacer(
-                        Modifier.width(
-                            8.dp
-                        )
-                    )
-
+                    Spacer(Modifier.width(8.dp))
 
                     Column {
-
                         SmallButton(
-                            "MB"
+                            text = "MB",
+                            selected = totalUnit == "MB"
                         ) {
-
-                            onTotalUnitChanged(
-                                "MB"
-                            )
+                            onTotalUnitChanged("MB")
                         }
 
-
-                        Spacer(
-                            Modifier.height(
-                                4.dp
-                            )
-                        )
-
+                        Spacer(Modifier.height(4.dp))
 
                         SmallButton(
-                            "GB"
+                            text = "GB",
+                            selected = totalUnit == "GB"
                         ) {
-
-                            onTotalUnitChanged(
-                                "GB"
-                            )
+                            onTotalUnitChanged("GB")
                         }
                     }
                 }
             }
 
 
-            Spacer(
-                Modifier.height(
-                    14.dp
-                )
-            )
+            Spacer(Modifier.height(14.dp))
 
 
             // ------------------------------------------------
-            // START TIME
+            // START + END TIME - SAME ROW
             // ------------------------------------------------
-
-            Text(
-
-                "Daily Start Time",
-
-                fontSize =
-                    18.sp,
-
-                fontWeight =
-                    FontWeight.Bold
-            )
-
-
-            Spacer(
-                Modifier.height(
-                    4.dp
-                )
-            )
-
 
             Row(
-
-                verticalAlignment =
-                    Alignment.CenterVertically
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
             ) {
 
-                Text(
-
-                    formatTime12Hour(
-
-                        startHour,
-
-                        startMinute
-                    ),
-
-                    modifier =
-                        Modifier.weight(
-                            1f
-                        ),
-
-                    fontSize =
-                        18.sp
-                )
-
-
-                OutlinedButton(
-
-                    onClick =
-                        onChangeTime
+                Column(
+                    modifier = Modifier.weight(1f)
                 ) {
 
                     Text(
-                        "Change"
+                        "Start Time",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold
                     )
+
+                    Spacer(Modifier.height(3.dp))
+
+                    Text(
+                        formatTime12Hour(
+                            startHour,
+                            startMinute
+                        ),
+                        fontSize = 18.sp
+                    )
+                }
+
+                Column(
+                    modifier = Modifier.weight(1f)
+                ) {
+
+                    Text(
+                        "End Time",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+
+                    Spacer(Modifier.height(3.dp))
+
+                    Text(
+                        formatTime12Hour(
+                            endHour,
+                            endMinute
+                        ),
+                        fontSize = 18.sp
+                    )
+                }
+
+                OutlinedButton(
+                    onClick = onChangeTime
+                ) {
+                    Text("Change")
                 }
             }
 
 
-            Spacer(
-                Modifier.height(
-                    14.dp
-                )
-            )
+            Spacer(Modifier.height(14.dp))
 
 
             // ------------------------------------------------
@@ -3911,89 +4027,46 @@ fun DailyDataPlanCard(
             // ------------------------------------------------
 
             Row(
-
-                verticalAlignment =
-                    Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically
             ) {
 
                 Text(
-
                     "Daily Alerts",
-
-                    modifier =
-                        Modifier.weight(
-                            1f
-                        ),
-
-                    fontSize =
-                        18.sp,
-
-                    fontWeight =
-                        FontWeight.Bold
+                    modifier = Modifier.weight(1f),
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold
                 )
 
-
                 IconButton(
-
-                    onClick =
-                        onAddAlert
+                    onClick = onAddAlert
                 ) {
-
                     Icon(
-
-                        imageVector =
-                            Icons.Default.Add,
-
-                        contentDescription =
-                            "Add Daily Alert"
+                        imageVector = Icons.Default.Add,
+                        contentDescription = "Add Daily Alert"
                     )
                 }
             }
 
 
-            // ------------------------------------------------
-            // SHOW / HIDE DAILY ALERTS
-            // ------------------------------------------------
-
             OutlinedButton(
-
-                onClick =
-                    onAlertsExpandedChanged,
-
-                modifier =
-                    Modifier.fillMaxWidth()
+                onClick = onAlertsExpandedChanged,
+                modifier = Modifier.fillMaxWidth()
             ) {
 
                 Text(
-
-                    if (
-                        alertsExpanded
-                    ) {
-
+                    if (alertsExpanded)
                         "Hide Daily Alerts"
-
-                    } else {
-
+                    else
                         "Show Daily Alerts"
-                    }
                 )
             }
 
 
-            if (
-                alertsExpanded
-            ) {
+            if (alertsExpanded) {
 
-                Spacer(
-                    Modifier.height(
-                        8.dp
-                    )
-                )
+                Spacer(Modifier.height(8.dp))
 
-
-                if (
-                    alerts.isEmpty()
-                ) {
+                if (alerts.isEmpty()) {
 
                     Text(
                         "No daily alerts added."
@@ -4001,88 +4074,40 @@ fun DailyDataPlanCard(
 
                 } else {
 
-                    for (
-                    alert in alerts
-                    ) {
+                    for (alert in alerts) {
 
                         Row(
-
-                            modifier =
-                                Modifier
-                                    .fillMaxWidth()
-                                    .padding(
-                                        vertical = 5.dp
-                                    ),
-
-                            verticalAlignment =
-                                Alignment.CenterVertically
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
 
                             Text(
-
-                                formatDisplayBytes(
-                                    alert.limitBytes
-                                ),
-
-                                modifier =
-                                    Modifier.weight(
-                                        1f
-                                    )
+                                formatDisplayBytes(alert.limitBytes),
+                                modifier = Modifier.weight(1f)
                             )
-
 
                             Text(
-
-                                if (
-                                    alert.isEnabled
-                                ) {
-
-                                    "ON"
-
-                                } else {
-
-                                    "OFF"
-
-                                }
+                                if (alert.isEnabled) "ON" else "OFF"
                             )
-
 
                             Switch(
-
-                                checked =
-                                    alert.isEnabled,
-
+                                checked = alert.isEnabled,
                                 onCheckedChange = {
-
-                                    onAlertEnabledChanged(
-                                        alert.id
-                                    )
+                                    onAlertEnabledChanged(alert.id)
                                 },
-
-                                modifier =
-                                    Modifier.scale(
-                                        0.65f
-                                    )
+                                modifier = Modifier.scale(0.65f)
                             )
 
-
                             IconButton(
-
                                 onClick = {
-
-                                    onAlertDelete(
-                                        alert.id
-                                    )
+                                    onAlertDelete(alert.id)
                                 }
                             ) {
-
                                 Icon(
-
-                                    imageVector =
-                                        Icons.Default.Delete,
-
-                                    contentDescription =
-                                        "Delete"
+                                    imageVector = Icons.Default.Delete,
+                                    contentDescription = "Delete"
                                 )
                             }
                         }
@@ -4092,32 +4117,18 @@ fun DailyDataPlanCard(
 
 
             // ------------------------------------------------
-            // SAVE
+            // SAVE DAILY PLAN
             // ------------------------------------------------
 
-            if (
-                !saved
-            ) {
+            if (!saved) {
 
-                Spacer(
-                    Modifier.height(
-                        12.dp
-                    )
-                )
-
+                Spacer(Modifier.height(12.dp))
 
                 Button(
-
-                    onClick =
-                        onSave,
-
-                    modifier =
-                        Modifier.fillMaxWidth()
+                    onClick = onSave,
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-
-                    Text(
-                        "Save Daily Plan"
-                    )
+                    Text("Save Daily Plan")
                 }
             }
         }
@@ -4314,20 +4325,63 @@ fun SmallButton(
     text:
     String,
 
+    selected:
+    Boolean = false,
+
     onClick:
         () -> Unit
 
 ) {
 
-    OutlinedButton(
+    if (selected) {
 
-        onClick =
-            onClick
-    ) {
+        // ----------------------------------------------------
+        // SELECTED
+        // ----------------------------------------------------
 
-        Text(
-            text
-        )
+        Button(
+
+            onClick =
+                onClick,
+
+            colors =
+                ButtonDefaults.buttonColors(
+
+                    containerColor =
+                        Color(
+                            0xFFFFC107
+                        ),
+
+                    contentColor =
+                        Color.Black
+                )
+        ) {
+
+            Text(
+
+                text,
+
+                fontWeight =
+                    FontWeight.Bold
+            )
+        }
+
+    } else {
+
+        // ----------------------------------------------------
+        // NOT SELECTED
+        // ----------------------------------------------------
+
+        OutlinedButton(
+
+            onClick =
+                onClick
+        ) {
+
+            Text(
+                text
+            )
+        }
     }
 }
 
@@ -4375,20 +4429,19 @@ fun emptyUsage():
 
 fun getUiCustomUsage(
 
-    context:
-    Context,
+    context: Context,
 
-    dataRepository:
-    DataRepository,
+    dataRepository: DataRepository,
 
-    plan:
-    DailyDataPlan?,
+    plan: DailyDataPlan?,
 
-    frozenPreferences:
-    android.content.SharedPreferences
+    frozenPreferences: android.content.SharedPreferences
 
-):
-        DataUsageManager.UsageResult {
+): DataUsageManager.UsageResult {
+
+    // --------------------------------------------------------
+    // Daily Plan OFF / invalid -> keep the frozen value.
+    // --------------------------------------------------------
 
     if (
         plan == null ||
@@ -4396,22 +4449,8 @@ fun getUiCustomUsage(
         plan.totalDataBytes <= 0L
     ) {
 
-        return DataUsageManager.UsageResult(
-
-            frozenPreferences.getLong(
-                "download_bytes",
-                0L
-            ),
-
-            frozenPreferences.getLong(
-                "upload_bytes",
-                0L
-            ),
-
-            frozenPreferences.getLong(
-                "total_bytes",
-                0L
-            )
+        return getFrozenCustomUsageForUi(
+            frozenPreferences
         )
     }
 
@@ -4419,85 +4458,131 @@ fun getUiCustomUsage(
     val now =
         System.currentTimeMillis()
 
+    val todayMidnight =
+        getTodayStartTimeForUi(now)
 
     val start =
         getTodayConfiguredStart(
-
             plan.startHour,
-
             plan.startMinute,
+            now
+        )
 
+    val end =
+        getTodayConfiguredEnd(
+            plan.endHour,
+            plan.endMinute,
             now
         )
 
 
     // --------------------------------------------------------
-    // Before Daily Start Time
+    // Invalid same-day window -> show zero.
     // --------------------------------------------------------
 
-    if (
-        now < start
-    ) {
-
+    if (end <= start) {
         return emptyUsage()
     }
 
 
-    val raw =
-        dataRepository.getCustomUsage(
-            start
-        )
-
-
     // --------------------------------------------------------
-    // Cap Custom to Daily Plan
+    // Before Start Time -> Custom must be 0.
     // --------------------------------------------------------
 
-    if (
-        raw.totalBytes <=
-        plan.totalDataBytes
-    ) {
-
-        return raw
+    if (now < start) {
+        return emptyUsage()
     }
 
 
-    val download =
-        raw.downloadBytes
-            .coerceAtMost(
-                plan.totalDataBytes
-            )
+    // --------------------------------------------------------
+    // Service stores Custom using the MIDNIGHT cycle.
+    // --------------------------------------------------------
+
+    val savedCycle =
+        frozenPreferences.getLong(
+            "cycle_start",
+            0L
+        )
+
+    if (savedCycle != todayMidnight) {
+        return emptyUsage()
+    }
 
 
-    val remaining =
-        (
-                plan.totalDataBytes -
-                        download
-                )
-            .coerceAtLeast(
-                0L
-            )
+    // --------------------------------------------------------
+    // During active window and after End Time both use the
+    // service's saved value. After End it remains frozen.
+    // --------------------------------------------------------
+
+    return capUsageToDailyPlanForUi(
+        getFrozenCustomUsageForUi(
+            frozenPreferences
+        ),
+        plan.totalDataBytes
+    )
+}
 
 
-    val upload =
-        raw.uploadBytes
-            .coerceAtMost(
-                remaining
-            )
+// ============================================================
+// FROZEN CUSTOM USAGE FOR UI
+// ============================================================
+//
+// DataMonitorService saves the current Custom usage here.
+// MainActivity reads the same value so the UI and service
+// stay synchronized.
+//
+// ============================================================
 
+fun getFrozenCustomUsageForUi(
+
+    frozenPreferences:
+    android.content.SharedPreferences
+
+): DataUsageManager.UsageResult {
 
     return DataUsageManager.UsageResult(
 
         downloadBytes =
-            download,
+            frozenPreferences.getLong(
+                "download_bytes",
+                0L
+            ),
 
         uploadBytes =
-            upload,
+            frozenPreferences.getLong(
+                "upload_bytes",
+                0L
+            ),
 
         totalBytes =
-            download +
-                    upload
+            frozenPreferences.getLong(
+                "total_bytes",
+                0L
+            )
     )
+}
+
+
+// ============================================================
+// TODAY'S MIDNIGHT
+// ============================================================
+
+fun getTodayStartTimeForUi(
+    now: Long
+): Long {
+
+    val calendar =
+        Calendar.getInstance()
+
+    calendar.timeInMillis =
+        now
+
+    calendar.set(Calendar.HOUR_OF_DAY, 0)
+    calendar.set(Calendar.MINUTE, 0)
+    calendar.set(Calendar.SECOND, 0)
+    calendar.set(Calendar.MILLISECOND, 0)
+
+    return calendar.timeInMillis
 }
 
 
@@ -4561,6 +4646,80 @@ fun getTodayConfiguredStart(
 
 
     return calendar.timeInMillis
+}
+
+
+// ============================================================
+// TODAY CONFIGURED END
+// ============================================================
+
+fun getTodayConfiguredEnd(
+
+    hour: Int,
+    minute: Int,
+    now: Long
+
+): Long {
+
+    val calendar =
+        Calendar.getInstance()
+
+    calendar.timeInMillis =
+        now
+
+    calendar.set(
+        Calendar.HOUR_OF_DAY,
+        hour.coerceIn(0, 23)
+    )
+
+    calendar.set(
+        Calendar.MINUTE,
+        minute.coerceIn(0, 59)
+    )
+
+    calendar.set(Calendar.SECOND, 0)
+    calendar.set(Calendar.MILLISECOND, 0)
+
+    return calendar.timeInMillis
+}
+
+
+// ============================================================
+// CAP CUSTOM TO DAILY PLAN
+// ============================================================
+
+fun capUsageToDailyPlanForUi(
+
+    usage: DataUsageManager.UsageResult,
+    dailyLimitBytes: Long
+
+): DataUsageManager.UsageResult {
+
+    if (dailyLimitBytes <= 0L) {
+        return emptyUsage()
+    }
+
+    if (usage.totalBytes <= dailyLimitBytes) {
+        return usage
+    }
+
+    val download =
+        usage.downloadBytes
+            .coerceAtMost(dailyLimitBytes)
+
+    val remaining =
+        (dailyLimitBytes - download)
+            .coerceAtLeast(0L)
+
+    val upload =
+        usage.uploadBytes
+            .coerceAtMost(remaining)
+
+    return DataUsageManager.UsageResult(
+        downloadBytes = download,
+        uploadBytes = upload,
+        totalBytes = download + upload
+    )
 }
 
 

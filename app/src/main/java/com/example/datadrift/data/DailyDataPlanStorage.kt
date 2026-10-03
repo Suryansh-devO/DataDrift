@@ -11,10 +11,11 @@ package com.example.datadrift.data
 // 3. Daily Data Plan ON/OFF save karna
 // 4. Daily total data save karna
 // 5. Daily start time save karna
-// 6. Daily alerts save karna
-// 7. Daily alerts ON/OFF save karna
-// 8. Daily alert triggered state save karna
-// 9. Daily alert delete karna
+// 6. Daily end time save karna
+// 7. Daily alerts save karna
+// 8. Daily alerts ON/OFF save karna
+// 9. Daily alert triggered state save karna
+// 10. Daily alert delete karna
 //
 // STORAGE:
 // SharedPreferences
@@ -22,12 +23,6 @@ package com.example.datadrift.data
 // IMPORTANT:
 //
 // Ye Data Limit Alerts se alag storage system hai.
-//
-// Data Limit Alerts:
-//      apna existing storage
-//
-// Daily Data Plan:
-//      ye file
 //
 // ============================================================
 
@@ -49,6 +44,7 @@ class DailyDataPlanStorage(
             Context.MODE_PRIVATE
         )
 
+
     // ========================================================
     // KEYS
     // ========================================================
@@ -62,12 +58,14 @@ class DailyDataPlanStorage(
         const val KEY_PLAN_ENABLED =
             "plan_enabled"
 
+
         // ----------------------------------------------------
         // Total data
         // ----------------------------------------------------
 
         const val KEY_TOTAL_DATA =
             "total_data_bytes"
+
 
         // ----------------------------------------------------
         // Start hour
@@ -76,12 +74,30 @@ class DailyDataPlanStorage(
         const val KEY_START_HOUR =
             "start_hour"
 
+
         // ----------------------------------------------------
         // Start minute
         // ----------------------------------------------------
 
         const val KEY_START_MINUTE =
             "start_minute"
+
+
+        // ----------------------------------------------------
+        // End hour
+        // ----------------------------------------------------
+
+        const val KEY_END_HOUR =
+            "end_hour"
+
+
+        // ----------------------------------------------------
+        // End minute
+        // ----------------------------------------------------
+
+        const val KEY_END_MINUTE =
+            "end_minute"
+
 
         // ----------------------------------------------------
         // Current cycle start
@@ -90,12 +106,14 @@ class DailyDataPlanStorage(
         const val KEY_CYCLE_START =
             "current_cycle_start"
 
+
         // ----------------------------------------------------
         // Alert IDs
         // ----------------------------------------------------
 
         const val KEY_ALERT_IDS =
             "alert_ids"
+
 
         // ----------------------------------------------------
         // Alert limit prefix
@@ -104,12 +122,14 @@ class DailyDataPlanStorage(
         const val KEY_ALERT_LIMIT_PREFIX =
             "alert_limit_"
 
+
         // ----------------------------------------------------
         // Alert enabled prefix
         // ----------------------------------------------------
 
         const val KEY_ALERT_ENABLED_PREFIX =
             "alert_enabled_"
+
 
         // ----------------------------------------------------
         // Alert triggered prefix
@@ -118,6 +138,7 @@ class DailyDataPlanStorage(
         const val KEY_ALERT_TRIGGERED_PREFIX =
             "alert_triggered_"
     }
+
 
     // ========================================================
     // SAVE COMPLETE PLAN
@@ -154,6 +175,16 @@ class DailyDataPlanStorage(
                 plan.startMinute
             )
 
+            .putInt(
+                KEY_END_HOUR,
+                plan.endHour
+            )
+
+            .putInt(
+                KEY_END_MINUTE,
+                plan.endMinute
+            )
+
             .putLong(
                 KEY_CYCLE_START,
                 plan.currentCycleStartTime
@@ -161,11 +192,13 @@ class DailyDataPlanStorage(
 
             .apply()
 
+
         // ----------------------------------------------------
         // Remove old alert list
         // ----------------------------------------------------
 
         clearSavedAlerts()
+
 
         // ----------------------------------------------------
         // Save new alerts
@@ -175,6 +208,7 @@ class DailyDataPlanStorage(
             plan.alerts
         )
     }
+
 
     // ========================================================
     // LOAD COMPLETE PLAN
@@ -196,6 +230,7 @@ class DailyDataPlanStorage(
             return null
         }
 
+
         // ----------------------------------------------------
         // Read basic information
         // ----------------------------------------------------
@@ -206,11 +241,13 @@ class DailyDataPlanStorage(
                 true
             )
 
+
         val totalDataBytes =
             preferences.getLong(
                 KEY_TOTAL_DATA,
                 0L
             )
+
 
         val startHour =
             preferences.getInt(
@@ -218,11 +255,42 @@ class DailyDataPlanStorage(
                 0
             )
 
+
         val startMinute =
             preferences.getInt(
                 KEY_START_MINUTE,
                 0
             )
+
+
+        // ----------------------------------------------------
+        // Read end time
+        //
+        // IMPORTANT:
+        //
+        // Old saved plans mein End Time nahi hoga.
+        //
+        // Isliye default:
+        //
+        // 11:59 PM
+        //
+        // diya gaya hai.
+        //
+        // ----------------------------------------------------
+
+        val endHour =
+            preferences.getInt(
+                KEY_END_HOUR,
+                23
+            )
+
+
+        val endMinute =
+            preferences.getInt(
+                KEY_END_MINUTE,
+                59
+            )
+
 
         val cycleStart =
             preferences.getLong(
@@ -230,12 +298,14 @@ class DailyDataPlanStorage(
                 0L
             )
 
+
         // ----------------------------------------------------
         // Read alerts
         // ----------------------------------------------------
 
         val alerts =
             loadAlerts()
+
 
         // ----------------------------------------------------
         // Create plan
@@ -252,6 +322,12 @@ class DailyDataPlanStorage(
             startMinute =
                 startMinute,
 
+            endHour =
+                endHour,
+
+            endMinute =
+                endMinute,
+
             isEnabled =
                 enabled,
 
@@ -262,6 +338,7 @@ class DailyDataPlanStorage(
                 cycleStart
         )
     }
+
 
     // ========================================================
     // SAVE ALERT LIST
@@ -282,6 +359,7 @@ class DailyDataPlanStorage(
                 }
                 .joinToString(",")
 
+
         preferences
             .edit()
             .putString(
@@ -289,6 +367,7 @@ class DailyDataPlanStorage(
                 ids
             )
             .apply()
+
 
         // ====================================================
         // Save each alert
@@ -302,7 +381,6 @@ class DailyDataPlanStorage(
                 .edit()
 
                 .putLong(
-
                     KEY_ALERT_LIMIT_PREFIX +
                             alert.id,
 
@@ -310,7 +388,6 @@ class DailyDataPlanStorage(
                 )
 
                 .putBoolean(
-
                     KEY_ALERT_ENABLED_PREFIX +
                             alert.id,
 
@@ -318,7 +395,6 @@ class DailyDataPlanStorage(
                 )
 
                 .putBoolean(
-
                     KEY_ALERT_TRIGGERED_PREFIX +
                             alert.id,
 
@@ -328,6 +404,7 @@ class DailyDataPlanStorage(
                 .apply()
         }
     }
+
 
     // ========================================================
     // LOAD ALERTS
@@ -342,6 +419,7 @@ class DailyDataPlanStorage(
                 ""
             ) ?: ""
 
+
         // ----------------------------------------------------
         // No alerts
         // ----------------------------------------------------
@@ -352,6 +430,7 @@ class DailyDataPlanStorage(
 
             return emptyList()
         }
+
 
         // ----------------------------------------------------
         // Convert IDs
@@ -366,8 +445,10 @@ class DailyDataPlanStorage(
                 }
                 .distinct()
 
+
         val alerts =
             mutableListOf<DailyDataAlert>()
+
 
         // ====================================================
         // Load each alert
@@ -386,6 +467,7 @@ class DailyDataPlanStorage(
                     0L
                 )
 
+
             // ------------------------------------------------
             // Invalid alert
             // ------------------------------------------------
@@ -397,6 +479,7 @@ class DailyDataPlanStorage(
                 continue
             }
 
+
             val enabled =
                 preferences.getBoolean(
 
@@ -406,6 +489,7 @@ class DailyDataPlanStorage(
                     true
                 )
 
+
             val triggered =
                 preferences.getBoolean(
 
@@ -414,6 +498,7 @@ class DailyDataPlanStorage(
 
                     false
                 )
+
 
             alerts.add(
 
@@ -434,6 +519,7 @@ class DailyDataPlanStorage(
             )
         }
 
+
         // ----------------------------------------------------
         // Smallest limit first
         // ----------------------------------------------------
@@ -442,6 +528,7 @@ class DailyDataPlanStorage(
             it.limitBytes
         }
     }
+
 
     // ========================================================
     // UPDATE PLAN ENABLED
@@ -460,6 +547,7 @@ class DailyDataPlanStorage(
             .apply()
     }
 
+
     // ========================================================
     // UPDATE TOTAL DATA
     // ========================================================
@@ -476,6 +564,7 @@ class DailyDataPlanStorage(
             )
             .apply()
     }
+
 
     // ========================================================
     // UPDATE START TIME
@@ -505,6 +594,36 @@ class DailyDataPlanStorage(
             .apply()
     }
 
+
+    // ========================================================
+    // UPDATE END TIME
+    // ========================================================
+
+    fun setEndTime(
+
+        hour: Int,
+
+        minute: Int
+
+    ) {
+
+        preferences
+            .edit()
+
+            .putInt(
+                KEY_END_HOUR,
+                hour
+            )
+
+            .putInt(
+                KEY_END_MINUTE,
+                minute
+            )
+
+            .apply()
+    }
+
+
     // ========================================================
     // UPDATE CYCLE START
     // ========================================================
@@ -521,6 +640,7 @@ class DailyDataPlanStorage(
             )
             .apply()
     }
+
 
     // ========================================================
     // UPDATE ALERT ENABLED
@@ -546,6 +666,7 @@ class DailyDataPlanStorage(
             .apply()
     }
 
+
     // ========================================================
     // UPDATE ALERT TRIGGERED
     // ========================================================
@@ -570,6 +691,7 @@ class DailyDataPlanStorage(
             .apply()
     }
 
+
     // ========================================================
     // DELETE ALERT
     // ========================================================
@@ -590,6 +712,7 @@ class DailyDataPlanStorage(
                 )
                 ?: ""
 
+
         val updatedIds =
             currentIds
                 .split(",")
@@ -600,6 +723,7 @@ class DailyDataPlanStorage(
                 .filter {
                     it != alertId
                 }
+
 
         // ----------------------------------------------------
         // Remove alert data
@@ -624,14 +748,13 @@ class DailyDataPlanStorage(
             )
 
             .putString(
-
                 KEY_ALERT_IDS,
-
                 updatedIds.joinToString(",")
             )
 
             .apply()
     }
+
 
     // ========================================================
     // CLEAR ALL ALERTS
@@ -645,12 +768,14 @@ class DailyDataPlanStorage(
                 ""
             ) ?: ""
 
+
         if (
             savedIds.isBlank()
         ) {
 
             return
         }
+
 
         val ids =
             savedIds
@@ -660,8 +785,10 @@ class DailyDataPlanStorage(
                         .toIntOrNull()
                 }
 
+
         val editor =
             preferences.edit()
+
 
         // ----------------------------------------------------
         // Remove every alert
@@ -687,12 +814,14 @@ class DailyDataPlanStorage(
             )
         }
 
+
         editor
             .remove(
                 KEY_ALERT_IDS
             )
             .apply()
     }
+
 
     // ========================================================
     // DELETE COMPLETE PLAN

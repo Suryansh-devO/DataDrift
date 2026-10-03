@@ -3,23 +3,16 @@ package com.example.datadrift.notification
 // ============================================================
 // DataDrift - DataNotificationManager
 // ============================================================
+// RESPONSIBILITY:
 //
-// Handles:
+// 1. Monitoring notification channel
+// 2. Persistent monitoring notification
+// 3. Remove monitoring notification
 //
-// 1. Foreground monitoring notification
-// 2. Custom / Total label
-// 3. Live download speed
-// 4. Live upload speed
-//
-// Notification behavior:
-//
-// Daily Data Plan OFF:
-//
-//     Total: 80 MB   ↓ 10 KB/s   ↑ 2 KB/s
-//
-// Daily Data Plan ON:
-//
-//     Custom: 184 MB   ↓ 10 KB/s   ↑ 2 KB/s
+// IMPORTANT:
+// DataMonitorService is NOT inside this file.
+// DataMonitorService exists only in:
+// service/DataMonitorService.kt
 //
 // ============================================================
 
@@ -35,8 +28,9 @@ import androidx.core.app.NotificationCompat
 
 import com.example.datadrift.MainActivity
 
+
 // ============================================================
-// NOTIFICATION MANAGER
+// DATA NOTIFICATION MANAGER
 // ============================================================
 
 class DataNotificationManager(
@@ -44,32 +38,14 @@ class DataNotificationManager(
 ) {
 
     // ========================================================
-    // CONSTANTS
-    // ========================================================
-
-    companion object {
-
-        const val CHANNEL_ID =
-            "datadrift_monitor_channel"
-
-        const val NOTIFICATION_ID =
-            1001
-
-        const val CHANNEL_NAME =
-            "DataDrift Monitor"
-
-        const val CHANNEL_DESCRIPTION =
-            "Shows DataDrift data usage and live network speed"
-    }
-
-    // ========================================================
     // SYSTEM NOTIFICATION MANAGER
     // ========================================================
 
-    private val notificationManager =
+    private val systemNotificationManager =
         context.getSystemService(
             Context.NOTIFICATION_SERVICE
         ) as NotificationManager
+
 
     // ========================================================
     // CREATE NOTIFICATION CHANNEL
@@ -85,16 +61,16 @@ class DataNotificationManager(
             val channel =
                 NotificationChannel(
 
-                    CHANNEL_ID,
+                    MONITOR_CHANNEL_ID,
 
-                    CHANNEL_NAME,
+                    "DataDrift Monitor",
 
                     NotificationManager
                         .IMPORTANCE_LOW
                 )
 
             channel.description =
-                CHANNEL_DESCRIPTION
+                "Shows DataDrift usage and live network speed"
 
             channel.setSound(
                 null,
@@ -105,46 +81,20 @@ class DataNotificationManager(
                 false
             )
 
-            notificationManager
+            systemNotificationManager
                 .createNotificationChannel(
                     channel
                 )
         }
     }
 
+
     // ========================================================
-    // CREATE MONITORING NOTIFICATION
-    // ========================================================
-    //
-    // label can be:
-    //
-    // "Total"
-    //
-    // OR
-    //
-    // "Custom"
-    //
+    // INITIAL NOTIFICATION
     // ========================================================
 
-    fun createMonitoringNotification(
-
-        usageLabel:
-        String,
-
-        usage:
-        String,
-
-        downloadSpeed:
-        String,
-
-        uploadSpeed:
-        String
-
-    ): Notification {
-
-        // ----------------------------------------------------
-        // Open MainActivity when notification is tapped
-        // ----------------------------------------------------
+    fun createInitialNotification():
+            Notification {
 
         val intent =
             Intent(
@@ -165,52 +115,25 @@ class DataNotificationManager(
                         PendingIntent.FLAG_IMMUTABLE
             )
 
-        // ----------------------------------------------------
-        // One-line notification text
-        // ----------------------------------------------------
-        //
-        // Example:
-        //
-        // Total: 80 MB   ↓ 10 KB/s   ↑ 2 KB/s
-        //
-        // OR
-        //
-        // Custom: 184 MB   ↓ 0 KB/s   ↑ 0 KB/s
-        //
-        // ----------------------------------------------------
-
-        val oneLineText =
-            "$usageLabel: $usage   " +
-                    "$downloadSpeed   " +
-                    "$uploadSpeed"
-
-        // ----------------------------------------------------
-        // Build notification
-        // ----------------------------------------------------
-
         return NotificationCompat.Builder(
 
             context,
 
-            CHANNEL_ID
+            MONITOR_CHANNEL_ID
 
         )
 
             .setSmallIcon(
-                android.R.drawable.ic_menu_info_details
+                android.R.drawable
+                    .ic_menu_info_details
             )
 
-            // ------------------------------------------------
-            // Put complete information in title.
-            // This keeps the notification one-line.
-            // ------------------------------------------------
-
             .setContentTitle(
-                oneLineText
+                "DataDrift"
             )
 
             .setContentText(
-                null
+                "Starting monitoring..."
             )
 
             .setContentIntent(
@@ -225,10 +148,6 @@ class DataNotificationManager(
                 false
             )
 
-            .setPriority(
-                NotificationCompat.PRIORITY_LOW
-            )
-
             .setSilent(
                 true
             )
@@ -237,8 +156,50 @@ class DataNotificationManager(
                 false
             )
 
+            .setPriority(
+                NotificationCompat
+                    .PRIORITY_LOW
+            )
+
             .build()
     }
+
+
+    // ========================================================
+    // OLD NAME COMPATIBILITY
+    // ========================================================
+    //
+    // Kuch purane DataMonitorService versions
+    // is method ko use karte the.
+    //
+    // ========================================================
+
+    fun createMonitoringNotification(
+
+        customUsage: String,
+
+        downloadSpeed: String,
+
+        uploadSpeed: String
+
+    ): Notification {
+
+        return buildMonitoringNotification(
+
+            usageLabel =
+                "Custom",
+
+            usage =
+                customUsage,
+
+            downloadSpeed =
+                downloadSpeed,
+
+            uploadSpeed =
+                uploadSpeed
+        )
+    }
+
 
     // ========================================================
     // SHOW MONITORING NOTIFICATION
@@ -246,32 +207,58 @@ class DataNotificationManager(
 
     fun showMonitoringNotification(
 
-        usageLabel:
-        String,
+        customUsage: String,
 
-        usage:
-        String,
+        downloadSpeed: String,
 
-        downloadSpeed:
-        String,
-
-        uploadSpeed:
-        String
+        uploadSpeed: String
 
     ) {
 
-        // ----------------------------------------------------
-        // Make sure channel exists
-        // ----------------------------------------------------
+        val notification =
+            buildMonitoringNotification(
 
-        createNotificationChannel()
+                usageLabel =
+                    "Custom",
 
-        // ----------------------------------------------------
-        // Create notification
-        // ----------------------------------------------------
+                usage =
+                    customUsage,
+
+                downloadSpeed =
+                    downloadSpeed,
+
+                uploadSpeed =
+                    uploadSpeed
+            )
+
+        systemNotificationManager.notify(
+
+            NOTIFICATION_ID,
+
+            notification
+        )
+    }
+
+
+    // ========================================================
+    // SHOW MONITORING NOTIFICATION
+    // WITH TOTAL / CUSTOM LABEL
+    // ========================================================
+
+    fun showMonitoringNotification(
+
+        usageLabel: String,
+
+        usage: String,
+
+        downloadSpeed: String,
+
+        uploadSpeed: String
+
+    ) {
 
         val notification =
-            createMonitoringNotification(
+            buildMonitoringNotification(
 
                 usageLabel =
                     usageLabel,
@@ -286,15 +273,7 @@ class DataNotificationManager(
                     uploadSpeed
             )
 
-        // ----------------------------------------------------
-        // Update existing notification
-        //
-        // Same notification ID means Android updates the
-        // existing DataDrift notification instead of creating
-        // a new notification every 3 seconds.
-        // ----------------------------------------------------
-
-        notificationManager.notify(
+        systemNotificationManager.notify(
 
             NOTIFICATION_ID,
 
@@ -302,15 +281,117 @@ class DataNotificationManager(
         )
     }
 
+
+    // ========================================================
+    // BUILD MONITORING NOTIFICATION
+    // ========================================================
+
+    private fun buildMonitoringNotification(
+
+        usageLabel: String,
+
+        usage: String,
+
+        downloadSpeed: String,
+
+        uploadSpeed: String
+
+    ): Notification {
+
+        val intent =
+            Intent(
+                context,
+                MainActivity::class.java
+            )
+
+        val pendingIntent =
+            PendingIntent.getActivity(
+
+                context,
+
+                0,
+
+                intent,
+
+                PendingIntent.FLAG_UPDATE_CURRENT or
+                        PendingIntent.FLAG_IMMUTABLE
+            )
+
+        val title =
+            "$usageLabel: $usage   " +
+                    "$downloadSpeed   " +
+                    "$uploadSpeed"
+
+        return NotificationCompat.Builder(
+
+            context,
+
+            MONITOR_CHANNEL_ID
+
+        )
+
+            .setSmallIcon(
+                android.R.drawable
+                    .ic_menu_info_details
+            )
+
+            .setContentTitle(
+                title
+            )
+
+            .setContentIntent(
+                pendingIntent
+            )
+
+            .setOngoing(
+                true
+            )
+
+            .setAutoCancel(
+                false
+            )
+
+            .setSilent(
+                true
+            )
+
+            .setShowWhen(
+                false
+            )
+
+            .setPriority(
+                NotificationCompat
+                    .PRIORITY_LOW
+            )
+
+            .build()
+    }
+
+
     // ========================================================
     // REMOVE MONITORING NOTIFICATION
     // ========================================================
 
     fun removeMonitoringNotification() {
 
-        notificationManager.cancel(
+        systemNotificationManager.cancel(
 
             NOTIFICATION_ID
         )
+    }
+
+
+    // ========================================================
+    // CONSTANTS
+    // ========================================================
+
+    companion object {
+
+        const val NOTIFICATION_ID =
+            1001
+
+        private const val
+                MONITOR_CHANNEL_ID =
+            "datadrift_monitor_channel"
     }
 }

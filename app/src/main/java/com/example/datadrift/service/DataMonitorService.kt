@@ -497,7 +497,11 @@ class DataMonitorService : Service() {
         if (
             dailyPlanEnabled &&
             dailyPlan != null &&
-            customCycleStart > 0L
+            customCycleStart > 0L &&
+            isDailyPlanWindowActive(
+                plan = dailyPlan,
+                now = now
+            )
         ) {
 
             checkDailyPlanAlerts(
@@ -616,7 +620,7 @@ class DataMonitorService : Service() {
 
 
         // ====================================================
-        // USER SELECTED DAILY START
+        // USER SELECTED START / END
         // ====================================================
 
         val todayStart =
@@ -631,6 +635,77 @@ class DataMonitorService : Service() {
                 now =
                     now
             )
+
+
+        val todayEnd =
+            getTodayConfiguredStart(
+
+                hour =
+                    plan.endHour,
+
+                minute =
+                    plan.endMinute,
+
+                now =
+                    now
+            )
+
+
+        // ====================================================
+        // INVALID TIME RANGE
+        // ====================================================
+        //
+        // Start and End same calendar day mein hone chahiye.
+        //
+        // Agar End <= Start hai to active window invalid hai.
+        //
+        // ====================================================
+
+        if (
+            todayEnd <= todayStart
+        ) {
+
+            saveFrozenCustomUsage(
+
+                usage =
+                    emptyUsage(),
+
+                cycleStart =
+                    todayMidnight
+            )
+
+            saveRuntimeState(
+
+                cycle =
+                    todayMidnight,
+
+                enabled =
+                    true,
+
+                baselineDownload =
+                    0L,
+
+                baselineUpload =
+                    0L
+            )
+
+            setRuntimeStartTime(
+                0L
+            )
+
+            setRuntimeEndedCycle(
+                0L
+            )
+
+            return CustomCalculation(
+
+                usage =
+                    emptyUsage(),
+
+                cycleStart =
+                    0L
+            )
+        }
 
 
         // ====================================================
@@ -656,6 +731,13 @@ class DataMonitorService : Service() {
                     0L
             )
 
+            setRuntimeStartTime(
+                0L
+            )
+
+            setRuntimeEndedCycle(
+                0L
+            )
 
             saveFrozenCustomUsage(
 
@@ -665,7 +747,6 @@ class DataMonitorService : Service() {
                 cycleStart =
                     todayMidnight
             )
-
 
             return CustomCalculation(
 
@@ -684,16 +765,6 @@ class DataMonitorService : Service() {
 
         val currentCycleStart =
             todayMidnight
-
-
-        // ====================================================
-        // ACTUAL MOBILE DATA FROM DAILY START
-        // ====================================================
-
-        val actualUsage =
-            dataRepository.getCustomUsage(
-                todayStart
-            )
 
 
         // ====================================================
@@ -718,6 +789,20 @@ class DataMonitorService : Service() {
             runtimePreferences.getBoolean(
                 KEY_RUNTIME_ENABLED,
                 false
+            )
+
+
+        val runtimeStartTime =
+            runtimePreferences.getLong(
+                KEY_RUNTIME_START_TIME,
+                0L
+            )
+
+
+        val endedCycle =
+            runtimePreferences.getLong(
+                KEY_RUNTIME_ENDED_CYCLE,
+                0L
             )
 
 
@@ -760,24 +845,21 @@ class DataMonitorService : Service() {
                     true,
 
                 baselineDownload =
-                    actualUsage.downloadBytes,
+                    0L,
 
                 baselineUpload =
-                    actualUsage.uploadBytes
+                    0L
             )
 
+            setRuntimeStartTime(
+                0L
+            )
+
+            setRuntimeEndedCycle(
+                0L
+            )
 
             saveFrozenCustomUsage(
-
-                usage =
-                    emptyUsage(),
-
-                cycleStart =
-                    currentCycleStart
-            )
-
-
-            return CustomCalculation(
 
                 usage =
                     emptyUsage(),
@@ -793,8 +875,177 @@ class DataMonitorService : Service() {
         // ====================================================
 
         if (
-            !runtimeWasEnabled
+            !runtimeWasEnabled &&
+            runtimeCycle == currentCycleStart
         ) {
+
+            setRuntimeStartTime(
+                0L
+            )
+
+            setRuntimeEndedCycle(
+                0L
+            )
+        }
+
+
+        // ====================================================
+        // END TIME REACHED
+        // ====================================================
+
+        if (
+            now >= todayEnd
+        ) {
+
+            // ------------------------------------------------
+            // End already processed for this calendar day.
+            // ------------------------------------------------
+
+            if (
+                endedCycle ==
+                currentCycleStart
+            ) {
+
+                return CustomCalculation(
+
+                    usage =
+                        storedFrozen,
+
+                    cycleStart =
+                        currentCycleStart
+                )
+            }
+
+
+            // ------------------------------------------------
+            // Read only Start -> End.
+            //
+            // Data after End Time is NOT included.
+            // ------------------------------------------------
+
+            val actualEndUsage =
+                dataUsageManager.getMobileDataUsage(
+
+                    startTime =
+                        todayStart,
+
+                    endTime =
+                        todayEnd
+                )
+
+
+            val finalUsage =
+                if (
+                    runtimeStartTime ==
+                    todayStart
+                ) {
+
+                    // ----------------------------------------
+                    // Service was already running during the
+                    // active window.
+                    // ----------------------------------------
+
+                    val downloadDelta =
+                        (
+                                actualEndUsage.downloadBytes -
+                                        baselineDownload
+                                )
+                            .coerceAtLeast(0L)
+
+
+                    val uploadDelta =
+                        (
+                                actualEndUsage.uploadBytes -
+                                        baselineUpload
+                                )
+                            .coerceAtLeast(0L)
+
+
+                    val frozenDownload =
+                        if (
+                            storedFrozenCycle ==
+                            currentCycleStart
+                        ) {
+
+                            storedFrozen.downloadBytes
+
+                        } else {
+
+                            0L
+                        }
+
+
+                    val frozenUpload =
+                        if (
+                            storedFrozenCycle ==
+                            currentCycleStart
+                        ) {
+
+                            storedFrozen.uploadBytes
+
+                        } else {
+
+                            0L
+                        }
+
+
+                    capUsageToDailyPlan(
+
+                        usage =
+                            DataUsageManager.UsageResult(
+
+                                downloadBytes =
+                                    frozenDownload +
+                                            downloadDelta,
+
+                                uploadBytes =
+                                    frozenUpload +
+                                            uploadDelta,
+
+                                totalBytes =
+                                    frozenDownload +
+                                            downloadDelta +
+                                            frozenUpload +
+                                            uploadDelta
+                            ),
+
+                        dailyLimitBytes =
+                            plan.totalDataBytes
+                    )
+
+                } else {
+
+                    // ----------------------------------------
+                    // Service was not initialized during the
+                    // active window.
+                    //
+                    // Use complete Start -> End usage.
+                    // ----------------------------------------
+
+                    capUsageToDailyPlan(
+
+                        usage =
+                            actualEndUsage,
+
+                        dailyLimitBytes =
+                            plan.totalDataBytes
+                    )
+                }
+
+
+            // ------------------------------------------------
+            // Freeze final Custom usage
+            // ------------------------------------------------
+
+            saveFrozenCustomUsage(
+
+                usage =
+                    finalUsage,
+
+                cycleStart =
+                    currentCycleStart
+            )
+
 
             saveRuntimeState(
 
@@ -805,42 +1056,93 @@ class DataMonitorService : Service() {
                     true,
 
                 baselineDownload =
-                    actualUsage.downloadBytes,
+                    actualEndUsage.downloadBytes,
 
                 baselineUpload =
-                    actualUsage.uploadBytes
+                    actualEndUsage.uploadBytes
             )
 
 
-            val resumedUsage =
-                if (
-                    storedFrozenCycle ==
+            setRuntimeStartTime(
+                todayStart
+            )
+
+            setRuntimeEndedCycle(
+                currentCycleStart
+            )
+
+
+            return CustomCalculation(
+
+                usage =
+                    finalUsage,
+
+                cycleStart =
                     currentCycleStart
-                ) {
-
-                    storedFrozen
-
-                } else {
-
-                    emptyUsage()
-                }
+            )
+        }
 
 
-            val cappedResumedUsage =
-                capUsageToDailyPlan(
+        // ====================================================
+        // ACTIVE WINDOW
+        // ====================================================
+        //
+        // First monitoring check after Start Time:
+        //
+        // Android NetworkStats kabhi old bucket data return
+        // kar sakta hai.
+        //
+        // Isliye jo value Start Time ke baad first check par
+        // milti hai, usko baseline bana dete hain.
+        //
+        // Result:
+        //
+        // Start Time -> Custom = 0
+        //
+        // Uske baad sirf NEW data count hoga.
+        //
+        // ====================================================
 
-                    usage =
-                        resumedUsage,
+        if (
+            runtimeStartTime !=
+            todayStart
+        ) {
 
-                    dailyLimitBytes =
-                        plan.totalDataBytes
+            val baselineUsage =
+                dataRepository.getCustomUsage(
+                    todayStart
                 )
+
+
+            saveRuntimeState(
+
+                cycle =
+                    currentCycleStart,
+
+                enabled =
+                    true,
+
+                baselineDownload =
+                    baselineUsage.downloadBytes,
+
+                baselineUpload =
+                    baselineUsage.uploadBytes
+            )
+
+
+            setRuntimeStartTime(
+                todayStart
+            )
+
+            setRuntimeEndedCycle(
+                0L
+            )
 
 
             saveFrozenCustomUsage(
 
                 usage =
-                    cappedResumedUsage,
+                    emptyUsage(),
 
                 cycleStart =
                     currentCycleStart
@@ -850,7 +1152,7 @@ class DataMonitorService : Service() {
             return CustomCalculation(
 
                 usage =
-                    cappedResumedUsage,
+                    emptyUsage(),
 
                 cycleStart =
                     currentCycleStart
@@ -859,7 +1161,17 @@ class DataMonitorService : Service() {
 
 
         // ====================================================
-        // NEW DOWNLOAD/UPLOAD SINCE LAST CHECK
+        // ACTUAL MOBILE DATA FROM DAILY START
+        // ====================================================
+
+        val actualUsage =
+            dataRepository.getCustomUsage(
+                todayStart
+            )
+
+
+        // ====================================================
+        // NEW DOWNLOAD / UPLOAD SINCE BASELINE
         // ====================================================
 
         val downloadDelta =
@@ -997,6 +1309,102 @@ class DataMonitorService : Service() {
                 currentCycleStart
         )
     }
+
+
+
+    // ========================================================
+    // DAILY PLAN ACTIVE WINDOW CHECK
+    // ========================================================
+
+    private fun isDailyPlanWindowActive(
+
+        plan:
+        DailyDataPlan,
+
+        now:
+        Long
+
+    ): Boolean {
+
+        val start =
+            getTodayConfiguredStart(
+
+                hour =
+                    plan.startHour,
+
+                minute =
+                    plan.startMinute,
+
+                now =
+                    now
+            )
+
+
+        val end =
+            getTodayConfiguredStart(
+
+                hour =
+                    plan.endHour,
+
+                minute =
+                    plan.endMinute,
+
+                now =
+                    now
+            )
+
+
+        return now >= start &&
+                now < end &&
+                end > start
+    }
+
+
+
+    // ========================================================
+    // SET RUNTIME START TIME
+    // ========================================================
+
+    private fun setRuntimeStartTime(
+        time:
+        Long
+    ) {
+
+        getSharedPreferences(
+            CUSTOM_RUNTIME_PREFERENCES,
+            Context.MODE_PRIVATE
+        )
+            .edit()
+            .putLong(
+                KEY_RUNTIME_START_TIME,
+                time
+            )
+            .apply()
+    }
+
+
+
+    // ========================================================
+    // SET RUNTIME ENDED CYCLE
+    // ========================================================
+
+    private fun setRuntimeEndedCycle(
+        cycle:
+        Long
+    ) {
+
+        getSharedPreferences(
+            CUSTOM_RUNTIME_PREFERENCES,
+            Context.MODE_PRIVATE
+        )
+            .edit()
+            .putLong(
+                KEY_RUNTIME_ENDED_CYCLE,
+                cycle
+            )
+            .apply()
+    }
+
 
 
     // ========================================================
@@ -2994,6 +3402,23 @@ class DataMonitorService : Service() {
 
         private const val KEY_BASELINE_UPLOAD =
             "custom_baseline_upload"
+
+
+        // ----------------------------------------------------
+        // Actual selected Start Time used for the current
+        // Custom baseline.
+        // ----------------------------------------------------
+
+        private const val KEY_RUNTIME_START_TIME =
+            "custom_runtime_start_time"
+
+
+        // ----------------------------------------------------
+        // Calendar day whose End Time has already been handled.
+        // ----------------------------------------------------
+
+        private const val KEY_RUNTIME_ENDED_CYCLE =
+            "custom_runtime_ended_cycle"
 
 
         // ----------------------------------------------------

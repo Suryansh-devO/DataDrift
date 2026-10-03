@@ -9,7 +9,8 @@ package com.example.datadrift.model
 // Example:
 //
 // Total Data : 1.5 GB
-// Start Time : 11:00 AM
+// Start Time : 10:00 AM
+// End Time   : 11:00 AM
 //
 // Alerts:
 //
@@ -24,9 +25,18 @@ package com.example.datadrift.model
 //
 // Daily Data Plan ke alerts repeat nahi honge.
 //
-// Har alert ek daily cycle mein sirf ek baar trigger hoga.
+// Har alert ek daily active period mein sirf ek baar
+// trigger hoga.
 //
-// Next day start time par cycle reset hogi.
+// Start Time:
+//     Is time se Custom usage counting start hogi.
+//
+// End Time:
+//     Is time par Custom usage counting stop hogi.
+//     End Time ke baad Daily Alerts bhi trigger nahi honge.
+//
+// Midnight:
+//     12:00 AM par next calendar day ka cycle reset hoga.
 //
 // ============================================================
 
@@ -88,20 +98,35 @@ data class DailyDataPlan(
     val totalDataBytes: Long,
 
     // --------------------------------------------------------
-    // Daily cycle ka start time
+    // Daily active period ka START time
     //
     // Example:
     //
-    // 11:00 AM
-    //
-    // Is value mein actual clock time ke
-    // hour/minute ko represent kiya jayega.
+    // 10:00 AM
     //
     // --------------------------------------------------------
 
     val startHour: Int,
 
     val startMinute: Int,
+
+    // --------------------------------------------------------
+    // Daily active period ka END time
+    //
+    // Example:
+    //
+    // 11:00 AM
+    //
+    // Is time ke baad:
+    //
+    // Custom counting stop
+    // Daily Alerts stop
+    //
+    // --------------------------------------------------------
+
+    val endHour: Int = 23,
+
+    val endMinute: Int = 59,
 
     // --------------------------------------------------------
     // Daily plan ON / OFF
@@ -116,10 +141,13 @@ data class DailyDataPlan(
     val alerts: List<DailyDataAlert> = emptyList(),
 
     // --------------------------------------------------------
-    // Current cycle ka start timestamp
+    // Current calendar-day cycle ka start timestamp
     //
-    // Isse pata chalega ki current alerts
-    // kis daily cycle ke hain.
+    // IMPORTANT:
+    //
+    // Daily cycle midnight 12:00 AM par reset hota hai.
+    //
+    // Ye selected Start Time nahi hai.
     //
     // --------------------------------------------------------
 
