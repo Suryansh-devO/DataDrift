@@ -1,19 +1,57 @@
+
 package com.example.datadrift
+// YSR
+// ============================================================
+// DataDrift - MainActivity
+// ============================================================
+//
+// FEATURES
+//
+// 1. Monitoring ON / OFF
+// 2. Today Usage
+// 3. Custom Usage
+// 4. Wi-Fi Usage
+// 5. Live Wi-Fi Speed
+// 6. Live Mobile Speed
+// 7. Status Bar Speed ON / OFF
+// 8. Status Bar X Position
+// 9. Status Bar Y Position
+// 10. Status Bar Text Size
+// 11. Data Limit Alerts
+// 12. Repeat Alerts
+// 13. Daily Data Plan
+// 14. Daily Alerts
+// 15. Daily Start Time
+// 16. Monthly Usage
+// 17. Weekly Usage
+// 18. Usage Access Permission
+// 19. Overlay Permission
+//
+// ============================================================
+
 
 // ============================================================
 // IMPORTS
 // ============================================================
 
+import android.app.usage.NetworkStats
+import android.app.usage.NetworkStatsManager
+
 import android.content.Context
 import android.content.Intent
+
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.net.TrafficStats
-import android.net.Uri
+
 import android.os.Build
 import android.os.Bundle
+
 import android.provider.Settings
 
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+
 import androidx.core.content.ContextCompat
 
 import androidx.compose.foundation.layout.Arrangement
@@ -25,12 +63,14 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Settings
 
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -74,10 +114,13 @@ import com.example.datadrift.model.DailyDataPlan
 import com.example.datadrift.service.DataMonitorService
 import com.example.datadrift.ui.theme.DataDriftTheme
 
+import kotlinx.coroutines.delay
+
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
+
 
 // ============================================================
 // MAIN ACTIVITY
@@ -85,15 +128,21 @@ import java.util.Locale
 
 class MainActivity : ComponentActivity() {
 
-    override fun onCreate(savedInstanceState: Bundle?) {
+    override fun onCreate(
+        savedInstanceState: Bundle?
+    ) {
 
-        super.onCreate(savedInstanceState)
+        super.onCreate(
+            savedInstanceState
+        )
 
         val dataUsageManager =
             DataUsageManager(this)
 
         val dataRepository =
-            DataRepository(dataUsageManager)
+            DataRepository(
+                dataUsageManager
+            )
 
         val alertStorage =
             DataAlertStorage(this)
@@ -106,29 +155,46 @@ class MainActivity : ComponentActivity() {
             DataDriftTheme {
 
                 DataDriftScreen(
-                    dataRepository = dataRepository,
-                    alertStorage = alertStorage,
-                    dailyPlanStorage = dailyPlanStorage
+
+                    dataRepository =
+                        dataRepository,
+
+                    alertStorage =
+                        alertStorage,
+
+                    dailyPlanStorage =
+                        dailyPlanStorage
                 )
             }
         }
     }
 }
 
+
 // ============================================================
 // MAIN SCREEN
 // ============================================================
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(
+    ExperimentalMaterial3Api::class
+)
 @Composable
 fun DataDriftScreen(
-    dataRepository: DataRepository,
-    alertStorage: DataAlertStorage,
-    dailyPlanStorage: DailyDataPlanStorage
+
+    dataRepository:
+    DataRepository,
+
+    alertStorage:
+    DataAlertStorage,
+
+    dailyPlanStorage:
+    DailyDataPlanStorage
+
 ) {
 
     val context =
         LocalContext.current
+
 
     // ========================================================
     // PREFERENCES
@@ -136,26 +202,27 @@ fun DataDriftScreen(
 
     val appPreferences =
         remember {
+
             context.getSharedPreferences(
+
                 "datadrift_app_settings",
+
                 Context.MODE_PRIVATE
             )
         }
 
-    /*
-     * IMPORTANT:
-     *
-     * This preference is also used by DataMonitorService.
-     *
-     * It contains the service's latest calculated Custom value.
-     */
+
     val frozenPreferences =
         remember {
+
             context.getSharedPreferences(
+
                 "datadrift_custom_frozen",
+
                 Context.MODE_PRIVATE
             )
         }
+
 
     // ========================================================
     // MONITORING
@@ -164,54 +231,127 @@ fun DataDriftScreen(
     var monitoringEnabled by remember {
 
         mutableStateOf(
+
             appPreferences.getBoolean(
+
                 "monitoring_enabled",
+
                 true
             )
         )
     }
+
 
     // ========================================================
     // USAGE
     // ========================================================
 
     var todayUsage by remember {
-        mutableStateOf(emptyUsage())
+
+        mutableStateOf(
+            emptyUsage()
+        )
     }
+
 
     var customUsage by remember {
-        mutableStateOf(emptyUsage())
+
+        mutableStateOf(
+            emptyUsage()
+        )
     }
 
+
     var monthlyUsage by remember {
-        mutableStateOf(emptyUsage())
+
+        mutableStateOf(
+            emptyUsage()
+        )
     }
+
+
+    // ========================================================
+    // WI-FI USAGE
+    // ========================================================
+
+    var wifiUsage by remember {
+
+        mutableStateOf(
+            emptyUsage()
+        )
+    }
+
 
     // ========================================================
     // WEEKLY
     // ========================================================
 
     var weeklyUsage by remember {
+
         mutableStateOf(
-            emptyList<DataRepository.WeeklyDayUsage>()
+
+            emptyList<
+                    DataRepository.WeeklyDayUsage
+                    >()
         )
     }
 
+
     var weeklyExpanded by remember {
+
         mutableStateOf(false)
     }
 
+
     // ========================================================
-    // SPEED
+    // DAILY ALERTS EXPANDED / COLLAPSED
+    // ========================================================
+
+    var dailyAlertsExpanded by remember {
+
+        mutableStateOf(false)
+    }
+
+
+    // ========================================================
+    // MOBILE LIVE SPEED
     // ========================================================
 
     var downloadSpeed by remember {
-        mutableStateOf("0 KB/s")
+
+        mutableStateOf(
+            "0 KB/s"
+        )
     }
 
+
     var uploadSpeed by remember {
-        mutableStateOf("0 KB/s")
+
+        mutableStateOf(
+            "0 KB/s"
+        )
     }
+
+
+    // ========================================================
+    // WI-FI LIVE SPEED
+    // ========================================================
+
+    var wifiDownloadSpeed by remember {
+
+        mutableStateOf(
+            "0 KB/s"
+        )
+    }
+
+
+    var wifiUploadSpeed by remember {
+
+        mutableStateOf(
+            "0 KB/s"
+        )
+    }
+
 
     // ========================================================
     // PERMISSIONS
@@ -220,16 +360,102 @@ fun DataDriftScreen(
     var hasUsageAccess by remember {
 
         mutableStateOf(
+
             dataRepository.hasUsageAccess()
         )
     }
 
+
     var hasOverlayPermission by remember {
 
         mutableStateOf(
-            checkOverlayPermission(context)
+
+            checkOverlayPermission(
+                context
+            )
         )
     }
+
+
+    // ========================================================
+    // STATUS BAR SPEED SETTINGS
+    // ========================================================
+
+    var statusBarSpeedEnabled by remember {
+
+        mutableStateOf(
+
+            appPreferences.getBoolean(
+
+                DataMonitorService
+                    .KEY_STATUS_BAR_SPEED_ENABLED,
+
+                DataMonitorService
+                    .DEFAULT_STATUS_BAR_SPEED_ENABLED
+            )
+        )
+    }
+
+
+    var showStatusBarSettings by remember {
+
+        mutableStateOf(false)
+    }
+
+
+    var statusBarXText by remember {
+
+        mutableStateOf(
+
+            appPreferences
+                .getInt(
+
+                    DataMonitorService
+                        .KEY_STATUS_BAR_SPEED_X,
+
+                    DataMonitorService
+                        .DEFAULT_STATUS_BAR_SPEED_X
+                )
+                .toString()
+        )
+    }
+
+
+    var statusBarYText by remember {
+
+        mutableStateOf(
+
+            appPreferences
+                .getInt(
+
+                    DataMonitorService
+                        .KEY_STATUS_BAR_SPEED_Y,
+
+                    DataMonitorService
+                        .DEFAULT_STATUS_BAR_SPEED_Y
+                )
+                .toString()
+        )
+    }
+
+
+    var statusBarTextSizeText by remember {
+
+        mutableStateOf(
+
+            appPreferences
+                .getFloat(
+
+                    DataMonitorService
+                        .KEY_STATUS_BAR_SPEED_TEXT_SIZE,
+
+                    DataMonitorService
+                        .DEFAULT_STATUS_BAR_SPEED_TEXT_SIZE
+                )
+                .toString()
+        )
+    }
+
 
     // ========================================================
     // DATA LIMIT ALERTS
@@ -237,93 +463,131 @@ fun DataDriftScreen(
 
     val alerts =
         remember {
+
             mutableStateListOf<DataAlert>()
         }
 
+
     var showAddAlertDialog by remember {
+
         mutableStateOf(false)
     }
 
+
     var customLimitText by remember {
+
         mutableStateOf("")
     }
 
+
     var customLimitUnit by remember {
+
         mutableStateOf("MB")
     }
 
+
     // ========================================================
-    // DAILY DATA PLAN
+    // DAILY PLAN
     // ========================================================
 
     var dailyPlanEnabled by remember {
+
         mutableStateOf(false)
     }
+
 
     var dailyPlanSaved by remember {
+
         mutableStateOf(false)
     }
 
+
     var dailyTotalText by remember {
+
         mutableStateOf("")
     }
 
+
     var dailyTotalUnit by remember {
+
         mutableStateOf("GB")
     }
 
+
     var dailyStartHour by remember {
+
         mutableStateOf(0)
     }
 
+
     var dailyStartMinute by remember {
+
         mutableStateOf(0)
     }
+
 
     val dailyAlerts =
         remember {
+
             mutableStateListOf<DailyDataAlert>()
         }
+
 
     // ========================================================
     // DAILY ALERT DIALOG
     // ========================================================
 
     var showDailyAlertDialog by remember {
+
         mutableStateOf(false)
     }
 
+
     var dailyAlertText by remember {
+
         mutableStateOf("")
     }
 
+
     var dailyAlertUnit by remember {
+
         mutableStateOf("MB")
     }
 
+
     var dailyAlertError by remember {
+
         mutableStateOf("")
     }
 
+
     // ========================================================
-    // START TIME DIALOG
+    // DAILY START TIME DIALOG
     // ========================================================
 
     var showDailyStartDialog by remember {
+
         mutableStateOf(false)
     }
 
+
     var dailyHourText by remember {
+
         mutableStateOf("12")
     }
 
+
     var dailyMinuteText by remember {
+
         mutableStateOf("00")
     }
 
+
     var dailyPeriod by remember {
+
         mutableStateOf("AM")
     }
+
 
     // ========================================================
     // LOAD SAVED DATA
@@ -332,44 +596,56 @@ fun DataDriftScreen(
     LaunchedEffect(Unit) {
 
         // ----------------------------------------------------
-        // DATA LIMIT ALERTS
+        // Data Limit Alerts
         // ----------------------------------------------------
 
         alerts.clear()
+
         alerts.addAll(
             alertStorage.loadAlerts()
         )
 
+
         // ----------------------------------------------------
-        // PERMISSIONS
+        // Permissions
         // ----------------------------------------------------
 
         hasUsageAccess =
             dataRepository.hasUsageAccess()
 
         hasOverlayPermission =
-            checkOverlayPermission(context)
+            checkOverlayPermission(
+                context
+            )
+
 
         // ----------------------------------------------------
-        // DAILY PLAN
+        // Daily Plan
         // ----------------------------------------------------
 
         val savedPlan =
             dailyPlanStorage.loadPlan()
 
-        if (savedPlan != null) {
+
+        if (
+            savedPlan != null
+        ) {
 
             dailyPlanEnabled =
                 savedPlan.isEnabled
 
+
             dailyPlanSaved =
                 savedPlan.totalDataBytes > 0L
+
 
             dailyStartHour =
                 savedPlan.startHour
 
+
             dailyStartMinute =
                 savedPlan.startMinute
+
 
             dailyAlerts.clear()
 
@@ -377,29 +653,73 @@ fun DataDriftScreen(
                 savedPlan.alerts
             )
 
-            // ------------------------------------------------
-            // TOTAL DISPLAY
-            // ------------------------------------------------
 
-            val total =
-                bytesToDisplayValue(
-                    savedPlan.totalDataBytes
-                )
+            // ----------------------------------------------
+            // Total amount
+            // ----------------------------------------------
 
-            dailyTotalText =
-                total.first
+            if (
+                savedPlan.totalDataBytes >=
+                1024L *
+                1024L *
+                1024L
+            ) {
 
-            dailyTotalUnit =
-                total.second
+                dailyTotalText =
+                    (
+                            savedPlan.totalDataBytes /
+                                    (
+                                            1024.0 *
+                                                    1024.0 *
+                                                    1024.0
+                                            )
+                            )
+                        .toCleanNumber()
 
-            // ------------------------------------------------
-            // START TIME DISPLAY
-            // ------------------------------------------------
+
+                dailyTotalUnit =
+                    "GB"
+
+            } else {
+
+                dailyTotalText =
+                    (
+                            savedPlan.totalDataBytes /
+                                    (
+                                            1024.0 *
+                                                    1024.0
+                                            )
+                            )
+                        .toCleanNumber()
+
+
+                dailyTotalUnit =
+                    "MB"
+            }
+
+
+            // ----------------------------------------------
+            // Start time
+            // ----------------------------------------------
+
+            val displayHour =
+
+                when {
+
+                    savedPlan.startHour == 0 ->
+                        12
+
+                    savedPlan.startHour > 12 ->
+                        savedPlan.startHour - 12
+
+                    else ->
+                        savedPlan.startHour
+                }
+
 
             dailyHourText =
-                displayHour(
-                    savedPlan.startHour
-                ).toString()
+                displayHour.toString()
+
 
             dailyMinuteText =
                 savedPlan.startMinute
@@ -409,55 +729,36 @@ fun DataDriftScreen(
                         '0'
                     )
 
+
             dailyPeriod =
+
                 if (
                     savedPlan.startHour >= 12
                 ) {
+
                     "PM"
+
                 } else {
+
                     "AM"
                 }
-
-            // ------------------------------------------------
-            // CUSTOM
-            // ------------------------------------------------
-
-            customUsage =
-                if (
-                    savedPlan.isEnabled
-                ) {
-
-                    getUiCustomUsage(
-                        plan = savedPlan,
-                        frozenPreferences = frozenPreferences
-                    )
-
-                } else {
-
-                    getFrozenCustomUsageForUi(
-                        frozenPreferences
-                    )
-                }
-
-        } else {
-
-            customUsage =
-                getFrozenCustomUsageForUi(
-                    frozenPreferences
-                )
         }
 
-        // ====================================================
-        // START SERVICE
-        // ====================================================
 
-        if (monitoringEnabled) {
+        // ----------------------------------------------------
+        // Start service
+        // ----------------------------------------------------
+
+        if (
+            monitoringEnabled
+        ) {
 
             startDataMonitorService(
                 context
             )
         }
     }
+
 
     // ========================================================
     // USAGE REFRESH
@@ -467,21 +768,19 @@ fun DataDriftScreen(
 
         while (true) {
 
-            // ------------------------------------------------
-            // PERMISSIONS
-            // ------------------------------------------------
-
             hasUsageAccess =
                 dataRepository.hasUsageAccess()
 
+
             hasOverlayPermission =
-                checkOverlayPermission(context)
+                checkOverlayPermission(
+                    context
+                )
 
-            // ------------------------------------------------
-            // USAGE
-            // ------------------------------------------------
 
-            if (hasUsageAccess) {
+            if (
+                hasUsageAccess
+            ) {
 
                 // ============================================
                 // TODAY
@@ -490,45 +789,45 @@ fun DataDriftScreen(
                 todayUsage =
                     dataRepository.getTodayUsage()
 
+
                 // ============================================
                 // DAILY PLAN
                 // ============================================
 
-                val savedPlan =
+                val plan =
                     dailyPlanStorage.loadPlan()
+
 
                 // ============================================
                 // CUSTOM
                 // ============================================
 
                 customUsage =
-                    if (
-                        savedPlan != null &&
-                        savedPlan.isEnabled &&
-                        savedPlan.totalDataBytes > 0L
-                    ) {
+                    getUiCustomUsage(
 
-                        /*
-                         * IMPORTANT:
-                         *
-                         * Custom is now read ONLY from the
-                         * DataMonitorService saved value.
-                         *
-                         * MainActivity no longer performs a
-                         * separate NetworkStats calculation.
-                         */
+                        context =
+                            context,
 
-                        getUiCustomUsage(
-                            plan = savedPlan,
-                            frozenPreferences = frozenPreferences
-                        )
+                        dataRepository =
+                            dataRepository,
 
-                    } else {
+                        plan =
+                            plan,
 
-                        getFrozenCustomUsageForUi(
+                        frozenPreferences =
                             frozenPreferences
-                        )
-                    }
+                    )
+
+
+                // ============================================
+                // WI-FI USAGE
+                // ============================================
+
+                wifiUsage =
+                    getTodayWifiUsage(
+                        context
+                    )
+
 
                 // ============================================
                 // MONTHLY
@@ -536,6 +835,7 @@ fun DataDriftScreen(
 
                 monthlyUsage =
                     dataRepository.getMonthlyUsage()
+
 
                 // ============================================
                 // WEEKLY
@@ -545,40 +845,59 @@ fun DataDriftScreen(
                     dataRepository.getWeeklyUsage()
             }
 
-            kotlinx.coroutines.delay(3000L)
+
+            delay(
+                3000L
+            )
         }
     }
 
+
     // ========================================================
-    // REAL-TIME SPEED
+    // MOBILE LIVE SPEED
     // ========================================================
 
     LaunchedEffect(Unit) {
 
         var previousDownload =
-            TrafficStats.getMobileRxBytes()
+            TrafficStats
+                .getMobileRxBytes()
+
 
         var previousUpload =
-            TrafficStats.getMobileTxBytes()
+            TrafficStats
+                .getMobileTxBytes()
+
 
         var previousTime =
             System.currentTimeMillis()
 
+
         while (true) {
 
-            kotlinx.coroutines.delay(1000L)
+            delay(
+                1000L
+            )
+
 
             val currentDownload =
-                TrafficStats.getMobileRxBytes()
+                TrafficStats
+                    .getMobileRxBytes()
+
 
             val currentUpload =
-                TrafficStats.getMobileTxBytes()
+                TrafficStats
+                    .getMobileTxBytes()
+
 
             val currentTime =
                 System.currentTimeMillis()
 
+
             val elapsed =
-                currentTime - previousTime
+                currentTime -
+                        previousTime
+
 
             if (
                 elapsed > 0L &&
@@ -589,47 +908,172 @@ fun DataDriftScreen(
             ) {
 
                 val seconds =
-                    elapsed / 1000.0
+                    elapsed /
+                            1000.0
+
 
                 val downloadDifference =
                     (
                             currentDownload -
                                     previousDownload
-                            ).coerceAtLeast(0L)
+                            )
+                        .coerceAtLeast(0L)
+
 
                 val uploadDifference =
                     (
                             currentUpload -
                                     previousUpload
-                            ).coerceAtLeast(0L)
+                            )
+                        .coerceAtLeast(0L)
+
 
                 downloadSpeed =
                     formatSpeed(
+
                         (
                                 downloadDifference /
                                         seconds
-                                ).toLong()
+                                )
+                            .toLong()
                     )
+
 
                 uploadSpeed =
                     formatSpeed(
+
                         (
                                 uploadDifference /
                                         seconds
-                                ).toLong()
+                                )
+                            .toLong()
                     )
             }
+
 
             previousDownload =
                 currentDownload
 
+
             previousUpload =
                 currentUpload
+
 
             previousTime =
                 currentTime
         }
     }
+
+
+    // ========================================================
+    // WI-FI LIVE SPEED
+    // ========================================================
+
+    LaunchedEffect(Unit) {
+
+        var previousRx =
+            getWifiInterfaceBytes(
+                context
+            ).first
+
+
+        var previousTx =
+            getWifiInterfaceBytes(
+                context
+            ).second
+
+
+        var previousTime =
+            System.currentTimeMillis()
+
+
+        while (true) {
+
+            delay(
+                1000L
+            )
+
+
+            val current =
+                getWifiInterfaceBytes(
+                    context
+                )
+
+
+            val currentTime =
+                System.currentTimeMillis()
+
+
+            val elapsed =
+                currentTime -
+                        previousTime
+
+
+            if (
+                elapsed > 0L &&
+                current.first >= 0L &&
+                current.second >= 0L &&
+                previousRx >= 0L &&
+                previousTx >= 0L
+            ) {
+
+                val seconds =
+                    elapsed /
+                            1000.0
+
+
+                val rxDifference =
+                    (
+                            current.first -
+                                    previousRx
+                            )
+                        .coerceAtLeast(0L)
+
+
+                val txDifference =
+                    (
+                            current.second -
+                                    previousTx
+                            )
+                        .coerceAtLeast(0L)
+
+
+                wifiDownloadSpeed =
+                    formatSpeed(
+
+                        (
+                                rxDifference /
+                                        seconds
+                                )
+                            .toLong()
+                    )
+
+
+                wifiUploadSpeed =
+                    formatSpeed(
+
+                        (
+                                txDifference /
+                                        seconds
+                                )
+                            .toLong()
+                    )
+            }
+
+
+            previousRx =
+                current.first
+
+
+            previousTx =
+                current.second
+
+
+            previousTime =
+                currentTime
+        }
+    }
+
 
     // ========================================================
     // MAIN UI
@@ -644,45 +1088,66 @@ fun DataDriftScreen(
                 title = {
 
                     Text(
-                        text = "DataDrift",
-                        fontWeight = FontWeight.Bold
+
+                        text =
+                            "DataDrift",
+
+                        fontWeight =
+                            FontWeight.Bold
                     )
                 },
+
 
                 actions = {
 
                     Row(
+
                         verticalAlignment =
                             Alignment.CenterVertically
                     ) {
 
                         Text(
-                            if (monitoringEnabled) {
+
+                            if (
+                                monitoringEnabled
+                            ) {
+
                                 "ON"
+
                             } else {
+
                                 "OFF"
                             }
                         )
+
 
                         Switch(
 
                             checked =
                                 monitoringEnabled,
 
-                            onCheckedChange = { enabled ->
+                            onCheckedChange = {
+
+                                    enabled ->
 
                                 monitoringEnabled =
                                     enabled
 
+
                                 appPreferences
                                     .edit()
                                     .putBoolean(
+
                                         "monitoring_enabled",
+
                                         enabled
                                     )
                                     .apply()
 
-                                if (enabled) {
+
+                                if (
+                                    enabled
+                                ) {
 
                                     startDataMonitorService(
                                         context
@@ -691,8 +1156,11 @@ fun DataDriftScreen(
                                 } else {
 
                                     context.stopService(
+
                                         Intent(
+
                                             context,
+
                                             DataMonitorService::class.java
                                         )
                                     )
@@ -700,7 +1168,9 @@ fun DataDriftScreen(
                             },
 
                             modifier =
-                                Modifier.scale(0.75f)
+                                Modifier.scale(
+                                    0.75f
+                                )
                         )
                     }
                 }
@@ -712,23 +1182,33 @@ fun DataDriftScreen(
         Column(
 
             modifier =
+
                 Modifier
                     .fillMaxSize()
-                    .padding(innerPadding)
+                    .padding(
+                        innerPadding
+                    )
                     .verticalScroll(
                         rememberScrollState()
                     )
-                    .padding(16.dp),
+                    .padding(
+                        16.dp
+                    ),
 
             verticalArrangement =
-                Arrangement.spacedBy(10.dp)
+                Arrangement.spacedBy(
+                    10.dp
+                )
         ) {
+
 
             // =================================================
             // USAGE ACCESS
             // =================================================
 
-            if (!hasUsageAccess) {
+            if (
+                !hasUsageAccess
+            ) {
 
                 PermissionCard(
 
@@ -736,7 +1216,7 @@ fun DataDriftScreen(
                         "Usage Access required",
 
                     description =
-                        "DataDrift needs Usage Access permission to read mobile data usage.",
+                        "DataDrift needs Usage Access permission to read mobile and Wi-Fi data usage.",
 
                     buttonText =
                         "Open Settings",
@@ -744,19 +1224,25 @@ fun DataDriftScreen(
                     onClick = {
 
                         context.startActivity(
+
                             Intent(
-                                Settings.ACTION_USAGE_ACCESS_SETTINGS
+
+                                Settings
+                                    .ACTION_USAGE_ACCESS_SETTINGS
                             )
                         )
                     }
                 )
             }
 
+
             // =================================================
             // OVERLAY PERMISSION
             // =================================================
 
-            if (!hasOverlayPermission) {
+            if (
+                !hasOverlayPermission
+            ) {
 
                 PermissionCard(
 
@@ -764,7 +1250,7 @@ fun DataDriftScreen(
                         "Status Bar Speed Permission Required",
 
                     description =
-                        "DataDrift needs permission to show live download speed in the status bar.",
+                        "Allow DataDrift to show live download speed in the status bar.",
 
                     buttonText =
                         "Allow",
@@ -780,9 +1266,11 @@ fun DataDriftScreen(
 
                                 Intent(
 
-                                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                    Settings
+                                        .ACTION_MANAGE_OVERLAY_PERMISSION,
 
-                                    Uri.parse(
+                                    android.net.Uri.parse(
+
                                         "package:${context.packageName}"
                                     )
                                 )
@@ -792,11 +1280,13 @@ fun DataDriftScreen(
                 )
             }
 
+
             // =================================================
             // TODAY + CUSTOM
             // =================================================
 
             Row(
+
                 modifier =
                     Modifier.fillMaxWidth()
             ) {
@@ -804,7 +1294,9 @@ fun DataDriftScreen(
                 UsageCard(
 
                     modifier =
-                        Modifier.weight(1f),
+                        Modifier.weight(
+                            1f
+                        ),
 
                     title =
                         "Today",
@@ -816,14 +1308,20 @@ fun DataDriftScreen(
                         dataRepository::formatBytes
                 )
 
+
                 Spacer(
-                    Modifier.width(10.dp)
+                    Modifier.width(
+                        10.dp
+                    )
                 )
+
 
                 UsageCard(
 
                     modifier =
-                        Modifier.weight(1f),
+                        Modifier.weight(
+                            1f
+                        ),
 
                     title =
                         "Custom",
@@ -836,8 +1334,115 @@ fun DataDriftScreen(
                 )
             }
 
+
             // =================================================
-            // REAL-TIME SPEED
+            // WI-FI USAGE
+            // =================================================
+
+            WifiUsageCard(
+
+                usage =
+                    wifiUsage,
+
+                wifiDownloadSpeed =
+                    wifiDownloadSpeed,
+
+                wifiUploadSpeed =
+                    wifiUploadSpeed,
+
+                formatBytes =
+                    dataRepository::formatBytes
+            )
+
+
+            // =================================================
+            // STATUS BAR SPEED CONTROL
+            // =================================================
+
+            StatusBarSpeedCard(
+
+                enabled =
+                    statusBarSpeedEnabled,
+
+                onEnabledChanged = {
+
+                        enabled ->
+
+                    statusBarSpeedEnabled =
+                        enabled
+
+
+                    appPreferences
+                        .edit()
+                        .putBoolean(
+
+                            DataMonitorService
+                                .KEY_STATUS_BAR_SPEED_ENABLED,
+
+                            enabled
+                        )
+                        .apply()
+
+
+                    if (
+                        monitoringEnabled
+                    ) {
+
+                        startDataMonitorService(
+                            context
+                        )
+                    }
+                },
+
+                onSettingsClick = {
+
+                    statusBarXText =
+                        appPreferences
+                            .getInt(
+
+                                DataMonitorService
+                                    .KEY_STATUS_BAR_SPEED_X,
+
+                                DataMonitorService
+                                    .DEFAULT_STATUS_BAR_SPEED_X
+                            )
+                            .toString()
+
+
+                    statusBarYText =
+                        appPreferences
+                            .getInt(
+
+                                DataMonitorService
+                                    .KEY_STATUS_BAR_SPEED_Y,
+
+                                DataMonitorService
+                                    .DEFAULT_STATUS_BAR_SPEED_Y
+                            )
+                            .toString()
+
+
+                    statusBarTextSizeText =
+                        appPreferences
+                            .getFloat(
+
+                                DataMonitorService
+                                    .KEY_STATUS_BAR_SPEED_TEXT_SIZE,
+
+                                DataMonitorService
+                                    .DEFAULT_STATUS_BAR_SPEED_TEXT_SIZE
+                            )
+                            .toString()
+
+
+                    showStatusBarSettings =
+                        true
+                }
+            )
+
+
+            // =================================================
+            // MOBILE REAL-TIME SPEED
             // =================================================
 
             RealTimeSpeedCard(
@@ -848,6 +1453,7 @@ fun DataDriftScreen(
                 uploadSpeed =
                     uploadSpeed
             )
+
 
             // =================================================
             // DATA LIMIT ALERTS
@@ -868,7 +1474,9 @@ fun DataDriftScreen(
                         "Data Limit Alerts",
 
                     modifier =
-                        Modifier.weight(1f),
+                        Modifier.weight(
+                            1f
+                        ),
 
                     fontSize =
                         22.sp,
@@ -876,6 +1484,7 @@ fun DataDriftScreen(
                     fontWeight =
                         FontWeight.Bold
                 )
+
 
                 IconButton(
 
@@ -903,7 +1512,10 @@ fun DataDriftScreen(
                 }
             }
 
-            if (alerts.isEmpty()) {
+
+            if (
+                alerts.isEmpty()
+            ) {
 
                 Card(
                     Modifier.fillMaxWidth()
@@ -911,17 +1523,19 @@ fun DataDriftScreen(
 
                     Text(
 
-                        text =
-                            "No data limit alerts added.",
+                        "No data limit alerts added.",
 
-                        modifier =
-                            Modifier.padding(16.dp)
+                        Modifier.padding(
+                            16.dp
+                        )
                     )
                 }
 
             } else {
 
-                for (alert in alerts) {
+                for (
+                alert in alerts
+                ) {
 
                     DataAlertCard(
 
@@ -930,29 +1544,37 @@ fun DataDriftScreen(
 
                         onEnabledChanged = {
 
+                            val updated =
+                                alert.copy(
+
+                                    isEnabled =
+                                        !alert.isEnabled
+                                )
+
+
                             val index =
                                 alerts.indexOfFirst {
-                                    it.id == alert.id
+
+                                    it.id ==
+                                            alert.id
                                 }
 
-                            if (index >= 0) {
 
-                                val updated =
-                                    alert.copy(
-                                        isEnabled =
-                                            !alert.isEnabled
-                                    )
+                            if (
+                                index >= 0
+                            ) {
 
                                 alerts[index] =
                                     updated
-
-                                alertStorage
-                                    .setAlertEnabled(
-                                        alert.id,
-                                        updated.isEnabled
-                                    )
                             }
+
+
+                            alertStorage
+                                .saveAlert(
+                                    updated
+                                )
                         },
+
 
                         onRepeatChanged = {
 
@@ -966,27 +1588,39 @@ fun DataDriftScreen(
                                         0L
                                 )
 
+
                             val index =
                                 alerts.indexOfFirst {
-                                    it.id == alert.id
+
+                                    it.id ==
+                                            alert.id
                                 }
 
-                            if (index >= 0) {
+
+                            if (
+                                index >= 0
+                            ) {
 
                                 alerts[index] =
                                     updated
                             }
 
-                            alertStorage.saveAlert(
-                                updated
-                            )
+
+                            alertStorage
+                                .saveAlert(
+                                    updated
+                                )
                         },
+
 
                         onDelete = {
 
                             alerts.removeAll {
-                                it.id == alert.id
+
+                                it.id ==
+                                        alert.id
                             }
+
 
                             alertStorage.deleteAlert(
                                 alert.id
@@ -995,6 +1629,7 @@ fun DataDriftScreen(
                     )
                 }
             }
+
 
             // =================================================
             // DAILY DATA PLAN
@@ -1023,75 +1658,51 @@ fun DataDriftScreen(
                 alerts =
                     dailyAlerts,
 
+                alertsExpanded =
+                    dailyAlertsExpanded,
+
+                onAlertsExpandedChanged = {
+
+                    dailyAlertsExpanded =
+                        !dailyAlertsExpanded
+                },
+
                 onToggle = {
 
-                    // -----------------------------------------
-                    // TURNING OFF
-                    // -----------------------------------------
+                    dailyPlanEnabled =
+                        !dailyPlanEnabled
 
-                    if (dailyPlanEnabled) {
 
-                        /*
-                         * IMPORTANT FIX:
-                         *
-                         * Do NOT use customUsage here.
-                         *
-                         * customUsage is a UI snapshot that can
-                         * be up to 3 seconds old.
-                         *
-                         * Instead, use the exact value saved by
-                         * DataMonitorService.
-                         */
-
-                        val serviceCustom =
-                            getFrozenCustomUsageForUi(
-                                frozenPreferences
-                            )
-
-                        val serviceCycle =
-                            frozenPreferences.getLong(
-                                "cycle_start",
-                                0L
-                            )
+                    if (
+                        !dailyPlanEnabled
+                    ) {
 
                         frozenPreferences
                             .edit()
                             .putLong(
                                 "download_bytes",
-                                serviceCustom.downloadBytes
+                                customUsage.downloadBytes
                             )
                             .putLong(
                                 "upload_bytes",
-                                serviceCustom.uploadBytes
+                                customUsage.uploadBytes
                             )
                             .putLong(
                                 "total_bytes",
-                                serviceCustom.totalBytes
-                            )
-                            .putLong(
-                                "cycle_start",
-                                serviceCycle
+                                customUsage.totalBytes
                             )
                             .apply()
-
-                        dailyPlanEnabled =
-                            false
-
-                    } else {
-
-                        // -------------------------------------
-                        // TURNING ON
-                        // -------------------------------------
-
-                        dailyPlanEnabled =
-                            true
                     }
+
 
                     val totalBytes =
                         getDataBytes(
+
                             dailyTotalText,
+
                             dailyTotalUnit
                         )
+
 
                     dailyPlanStorage.savePlan(
 
@@ -1117,13 +1728,17 @@ fun DataDriftScreen(
                         )
                     )
 
-                    dailyPlanSaved =
-                        totalBytes > 0L
 
-                    startDataMonitorService(
-                        context
-                    )
+                    if (
+                        monitoringEnabled
+                    ) {
+
+                        startDataMonitorService(
+                            context
+                        )
+                    }
                 },
+
 
                 onEdit = {
 
@@ -1131,17 +1746,28 @@ fun DataDriftScreen(
                         false
                 },
 
-                onTotalTextChanged = { value ->
+
+                onTotalTextChanged = {
+
+                        value ->
 
                     dailyTotalText =
-                        value
+                        value.filter {
+
+                            it.isDigit() ||
+                                    it == '.'
+                        }
                 },
 
-                onTotalUnitChanged = { value ->
+
+                onTotalUnitChanged = {
+
+                        value ->
 
                     dailyTotalUnit =
                         value
                 },
+
 
                 onAddAlert = {
 
@@ -1158,12 +1784,27 @@ fun DataDriftScreen(
                         true
                 },
 
+
                 onChangeTime = {
 
+                    val displayHour =
+
+                        when {
+
+                            dailyStartHour == 0 ->
+                                12
+
+                            dailyStartHour > 12 ->
+                                dailyStartHour - 12
+
+                            else ->
+                                dailyStartHour
+                        }
+
+
                     dailyHourText =
-                        displayHour(
-                            dailyStartHour
-                        ).toString()
+                        displayHour.toString()
+
 
                     dailyMinuteText =
                         dailyStartMinute
@@ -1173,28 +1814,40 @@ fun DataDriftScreen(
                                 '0'
                             )
 
+
                     dailyPeriod =
+
                         if (
                             dailyStartHour >= 12
                         ) {
+
                             "PM"
+
                         } else {
+
                             "AM"
                         }
+
 
                     showDailyStartDialog =
                         true
                 },
 
+
                 onSave = {
 
                     val totalBytes =
                         getDataBytes(
+
                             dailyTotalText,
+
                             dailyTotalUnit
                         )
 
-                    if (totalBytes > 0L) {
+
+                    if (
+                        totalBytes > 0L
+                    ) {
 
                         dailyPlanStorage.savePlan(
 
@@ -1220,59 +1873,84 @@ fun DataDriftScreen(
                             )
                         )
 
+
                         dailyPlanSaved =
                             true
 
-                        startDataMonitorService(
-                            context
-                        )
+
+                        if (
+                            monitoringEnabled
+                        ) {
+
+                            startDataMonitorService(
+                                context
+                            )
+                        }
                     }
                 },
 
-                onAlertEnabledChanged = { alertId ->
+
+                onAlertEnabledChanged = {
+
+                        alertId ->
 
                     val index =
                         dailyAlerts.indexOfFirst {
-                            it.id == alertId
+
+                            it.id ==
+                                    alertId
                         }
 
-                    if (index >= 0) {
+
+                    if (
+                        index >= 0
+                    ) {
 
                         val updated =
                             dailyAlerts[index].copy(
+
                                 isEnabled =
                                     !dailyAlerts[index]
                                         .isEnabled
                             )
 
+
                         dailyAlerts[index] =
                             updated
 
+
                         dailyPlanStorage
                             .setAlertEnabled(
+
                                 alertId,
+
                                 updated.isEnabled
                             )
                     }
                 },
 
-                onAlertDelete = { alertId ->
+
+                onAlertDelete = {
+
+                        alertId ->
 
                     dailyAlerts.removeAll {
-                        it.id == alertId
+
+                        it.id ==
+                                alertId
                     }
 
-                    dailyPlanStorage.deleteAlert(
-                        alertId
-                    )
 
-                    dailyPlanSaved =
-                        false
+                    dailyPlanStorage
+                        .deleteAlert(
+                            alertId
+                        )
                 }
             )
 
+
             // =================================================
-            // MONTHLY + WEEKLY
+            // MONTHLY
             // =================================================
 
             Card(
@@ -1280,13 +1958,14 @@ fun DataDriftScreen(
             ) {
 
                 Column(
-                    Modifier.padding(16.dp)
+                    Modifier.padding(
+                        16.dp
+                    )
                 ) {
 
                     Text(
 
-                        text =
-                            "Monthly Usage",
+                        "Monthly Usage",
 
                         fontSize =
                             22.sp,
@@ -1295,16 +1974,19 @@ fun DataDriftScreen(
                             FontWeight.Bold
                     )
 
+
                     Spacer(
-                        Modifier.height(8.dp)
+                        Modifier.height(
+                            8.dp
+                        )
                     )
+
 
                     Text(
 
-                        text =
-                            dataRepository.formatBytes(
-                                monthlyUsage.totalBytes
-                            ),
+                        dataRepository.formatBytes(
+                            monthlyUsage.totalBytes
+                        ),
 
                         fontSize =
                             26.sp,
@@ -1313,13 +1995,18 @@ fun DataDriftScreen(
                             FontWeight.Bold
                     )
 
+
                     Spacer(
-                        Modifier.height(8.dp)
+                        Modifier.height(
+                            8.dp
+                        )
                     )
+
 
                     Row {
 
                         Text(
+
                             "↓ ${
                                 dataRepository.formatBytes(
                                     monthlyUsage.downloadBytes
@@ -1327,11 +2014,16 @@ fun DataDriftScreen(
                             }"
                         )
 
+
                         Spacer(
-                            Modifier.weight(1f)
+                            Modifier.weight(
+                                1f
+                            )
                         )
 
+
                         Text(
+
                             "↑ ${
                                 dataRepository.formatBytes(
                                     monthlyUsage.uploadBytes
@@ -1340,9 +2032,13 @@ fun DataDriftScreen(
                         )
                     }
 
+
                     Spacer(
-                        Modifier.height(10.dp)
+                        Modifier.height(
+                            10.dp
+                        )
                     )
+
 
                     OutlinedButton(
 
@@ -1358,19 +2054,30 @@ fun DataDriftScreen(
 
                         Text(
 
-                            if (weeklyExpanded) {
+                            if (
+                                weeklyExpanded
+                            ) {
+
                                 "Hide Weekly Usage"
+
                             } else {
+
                                 "Show Weekly Usage"
                             }
                         )
                     }
 
-                    if (weeklyExpanded) {
+
+                    if (
+                        weeklyExpanded
+                    ) {
 
                         Spacer(
-                            Modifier.height(10.dp)
+                            Modifier.height(
+                                10.dp
+                            )
                         )
+
 
                         WeeklyUsageGrid(
 
@@ -1386,11 +2093,14 @@ fun DataDriftScreen(
         }
     }
 
+
     // ========================================================
-    // DATA LIMIT ALERT DIALOG
+    // ADD DATA LIMIT ALERT DIALOG
     // ========================================================
 
-    if (showAddAlertDialog) {
+    if (
+        showAddAlertDialog
+    ) {
 
         AlertDialog(
 
@@ -1400,12 +2110,14 @@ fun DataDriftScreen(
                     false
             },
 
+
             title = {
 
                 Text(
                     "Add Data Limit Alert"
                 )
             },
+
 
             text = {
 
@@ -1416,10 +2128,13 @@ fun DataDriftScreen(
                         value =
                             customLimitText,
 
-                        onValueChange = { value ->
+                        onValueChange = {
+
+                                value ->
 
                             customLimitText =
                                 value.filter {
+
                                     it.isDigit() ||
                                             it == '.'
                                 }
@@ -1429,30 +2144,45 @@ fun DataDriftScreen(
                             Modifier.fillMaxWidth(),
 
                         label = {
-                            Text("Amount")
+
+                            Text(
+                                "Amount"
+                            )
                         },
 
                         singleLine =
                             true
                     )
 
+
                     Spacer(
-                        Modifier.height(8.dp)
+                        Modifier.height(
+                            8.dp
+                        )
                     )
+
 
                     Row {
 
-                        SmallButton("MB") {
+                        SmallButton(
+                            "MB"
+                        ) {
 
                             customLimitUnit =
                                 "MB"
                         }
 
+
                         Spacer(
-                            Modifier.width(8.dp)
+                            Modifier.width(
+                                8.dp
+                            )
                         )
 
-                        SmallButton("GB") {
+
+                        SmallButton(
+                            "GB"
+                        ) {
 
                             customLimitUnit =
                                 "GB"
@@ -1461,33 +2191,35 @@ fun DataDriftScreen(
                 }
             },
 
+
             confirmButton = {
 
                 TextButton(
 
                     onClick = {
 
-                        val amount =
-                            customLimitText
-                                .toDoubleOrNull()
+                        val bytes =
+                            getDataBytes(
+
+                                customLimitText,
+
+                                customLimitUnit
+                            )
+
 
                         if (
-                            amount != null &&
-                            amount > 0.0
+                            bytes > 0L
                         ) {
-
-                            val bytes =
-                                convertToBytes(
-                                    amount,
-                                    customLimitUnit
-                                )
 
                             val newId =
                                 (
-                                        alerts.maxOfOrNull {
-                                            it.id
-                                        } ?: 0
+                                        alerts
+                                            .maxOfOrNull {
+                                                it.id
+                                            }
+                                            ?: 0
                                         ) + 1
+
 
                             val newAlert =
                                 DataAlert(
@@ -1505,17 +2237,21 @@ fun DataDriftScreen(
                                         false
                                 )
 
+
                             alerts.add(
                                 newAlert
                             )
+
 
                             alerts.sortBy {
                                 it.limitBytes
                             }
 
+
                             alertStorage.saveAlert(
                                 newAlert
                             )
+
 
                             showAddAlertDialog =
                                 false
@@ -1523,9 +2259,12 @@ fun DataDriftScreen(
                     }
                 ) {
 
-                    Text("Add")
+                    Text(
+                        "Add"
+                    )
                 }
             },
+
 
             dismissButton = {
 
@@ -1538,17 +2277,22 @@ fun DataDriftScreen(
                     }
                 ) {
 
-                    Text("Cancel")
+                    Text(
+                        "Cancel"
+                    )
                 }
             }
         )
     }
 
+
     // ========================================================
     // DAILY ALERT DIALOG
     // ========================================================
 
-    if (showDailyAlertDialog) {
+    if (
+        showDailyAlertDialog
+    ) {
 
         AlertDialog(
 
@@ -1558,12 +2302,14 @@ fun DataDriftScreen(
                     false
             },
 
+
             title = {
 
                 Text(
                     "Add Daily Alert"
                 )
             },
+
 
             text = {
 
@@ -1574,13 +2320,17 @@ fun DataDriftScreen(
                         value =
                             dailyAlertText,
 
-                        onValueChange = { value ->
+                        onValueChange = {
+
+                                value ->
 
                             dailyAlertText =
                                 value.filter {
+
                                     it.isDigit() ||
                                             it == '.'
                                 }
+
 
                             dailyAlertError =
                                 ""
@@ -1590,51 +2340,62 @@ fun DataDriftScreen(
                             Modifier.fillMaxWidth(),
 
                         label = {
-                            Text("Amount")
+
+                            Text(
+                                "Amount"
+                            )
                         },
 
                         singleLine =
                             true
                     )
 
+
                     Spacer(
-                        Modifier.height(8.dp)
+                        Modifier.height(
+                            8.dp
+                        )
                     )
+
 
                     Row {
 
-                        SmallButton("MB") {
+                        SmallButton(
+                            "MB"
+                        ) {
 
                             dailyAlertUnit =
                                 "MB"
                         }
 
+
                         Spacer(
-                            Modifier.width(8.dp)
+                            Modifier.width(
+                                8.dp
+                            )
                         )
 
-                        SmallButton("GB") {
+
+                        SmallButton(
+                            "GB"
+                        ) {
 
                             dailyAlertUnit =
                                 "GB"
                         }
                     }
 
-                    Spacer(
-                        Modifier.height(8.dp)
-                    )
-
-                    Text(
-                        "Daily alert cannot exceed the total Daily Data Plan."
-                    )
 
                     if (
-                        dailyAlertError.isNotBlank()
+                        dailyAlertError.isNotEmpty()
                     ) {
 
                         Spacer(
-                            Modifier.height(6.dp)
+                            Modifier.height(
+                                6.dp
+                            )
                         )
+
 
                         Text(
                             dailyAlertError
@@ -1643,62 +2404,76 @@ fun DataDriftScreen(
                 }
             },
 
+
             confirmButton = {
 
                 TextButton(
 
                     onClick = {
 
-                        val alertBytes =
+                        val limitBytes =
                             getDataBytes(
+
                                 dailyAlertText,
+
                                 dailyAlertUnit
                             )
 
+
                         val totalBytes =
                             getDataBytes(
+
                                 dailyTotalText,
+
                                 dailyTotalUnit
                             )
 
+
                         when {
+
+                            limitBytes <= 0L -> {
+
+                                dailyAlertError =
+                                    "Enter a valid amount."
+                            }
+
 
                             totalBytes <= 0L -> {
 
                                 dailyAlertError =
-                                    "Enter the Daily Data Plan total first."
+                                    "Set the Daily Plan total first."
                             }
 
-                            alertBytes <= 0L -> {
+
+                            limitBytes >
+                                    totalBytes -> {
 
                                 dailyAlertError =
-                                    "Enter a valid alert amount."
+                                    "Alert cannot exceed Daily Plan total."
                             }
 
-                            alertBytes > totalBytes -> {
-
-                                dailyAlertError =
-                                    "Alert cannot exceed Daily Data Plan."
-                            }
 
                             else -> {
 
                                 val newId =
+
                                     (
-                                            dailyAlerts.maxOfOrNull {
-                                                it.id
-                                            } ?: 0
+                                            dailyAlerts
+                                                .maxOfOrNull {
+                                                    it.id
+                                                }
+                                                ?: 0
                                             ) + 1
 
-                                dailyAlerts.add(
 
+                                val newAlert =
                                     DailyDataAlert(
 
                                         id =
                                             newId,
 
                                         limitBytes =
-                                            alertBytes,
+                                            limitBytes,
 
                                         isEnabled =
                                             true,
@@ -1706,14 +2481,17 @@ fun DataDriftScreen(
                                         isTriggered =
                                             false
                                     )
+
+
+                                dailyAlerts.add(
+                                    newAlert
                                 )
+
 
                                 dailyAlerts.sortBy {
                                     it.limitBytes
                                 }
 
-                                dailyPlanSaved =
-                                    false
 
                                 showDailyAlertDialog =
                                     false
@@ -1722,9 +2500,12 @@ fun DataDriftScreen(
                     }
                 ) {
 
-                    Text("Add")
+                    Text(
+                        "Add"
+                    )
                 }
             },
+
 
             dismissButton = {
 
@@ -1737,17 +2518,22 @@ fun DataDriftScreen(
                     }
                 ) {
 
-                    Text("Cancel")
+                    Text(
+                        "Cancel"
+                    )
                 }
             }
         )
     }
 
+
     // ========================================================
     // DAILY START TIME DIALOG
     // ========================================================
 
-    if (showDailyStartDialog) {
+    if (
+        showDailyStartDialog
+    ) {
 
         AlertDialog(
 
@@ -1757,12 +2543,14 @@ fun DataDriftScreen(
                     false
             },
 
+
             title = {
 
                 Text(
                     "Daily Start Time"
                 )
             },
+
 
             text = {
 
@@ -1775,47 +2563,63 @@ fun DataDriftScreen(
                             value =
                                 dailyHourText,
 
-                            onValueChange = { value ->
+                            onValueChange = {
 
                                 dailyHourText =
-                                    value.filter {
-                                        it.isDigit()
+                                    it.filter {
+                                            c ->
+                                        c.isDigit()
                                     }
                             },
 
                             modifier =
-                                Modifier.weight(1f),
+                                Modifier.weight(
+                                    1f
+                                ),
 
                             label = {
-                                Text("Hour")
+
+                                Text(
+                                    "Hour"
+                                )
                             },
 
                             singleLine =
                                 true
                         )
 
+
                         Spacer(
-                            Modifier.width(8.dp)
+                            Modifier.width(
+                                8.dp
+                            )
                         )
+
 
                         OutlinedTextField(
 
                             value =
                                 dailyMinuteText,
 
-                            onValueChange = { value ->
+                            onValueChange = {
 
                                 dailyMinuteText =
-                                    value.filter {
-                                        it.isDigit()
+                                    it.filter {
+                                            c ->
+                                        c.isDigit()
                                     }
                             },
 
                             modifier =
-                                Modifier.weight(1f),
+                                Modifier.weight(
+                                    1f
+                                ),
 
                             label = {
-                                Text("Minute")
+
+                                Text(
+                                    "Minute"
+                                )
                             },
 
                             singleLine =
@@ -1823,23 +2627,35 @@ fun DataDriftScreen(
                         )
                     }
 
+
                     Spacer(
-                        Modifier.height(10.dp)
+                        Modifier.height(
+                            10.dp
+                        )
                     )
+
 
                     Row {
 
-                        SmallButton("AM") {
+                        SmallButton(
+                            "AM"
+                        ) {
 
                             dailyPeriod =
                                 "AM"
                         }
 
+
                         Spacer(
-                            Modifier.width(8.dp)
+                            Modifier.width(
+                                8.dp
+                            )
                         )
 
-                        SmallButton("PM") {
+
+                        SmallButton(
+                            "PM"
+                        ) {
 
                             dailyPeriod =
                                 "PM"
@@ -1848,6 +2664,7 @@ fun DataDriftScreen(
                 }
             },
 
+
             confirmButton = {
 
                 TextButton(
@@ -1855,10 +2672,14 @@ fun DataDriftScreen(
                     onClick = {
 
                         val hour =
-                            dailyHourText.toIntOrNull()
+                            dailyHourText
+                                .toIntOrNull()
+
 
                         val minute =
-                            dailyMinuteText.toIntOrNull()
+                            dailyMinuteText
+                                .toIntOrNull()
+
 
                         if (
                             hour != null &&
@@ -1869,15 +2690,20 @@ fun DataDriftScreen(
 
                             dailyStartHour =
                                 convertTo24Hour(
+
                                     hour,
+
                                     dailyPeriod
                                 )
+
 
                             dailyStartMinute =
                                 minute
 
+
                             dailyPlanSaved =
                                 false
+
 
                             showDailyStartDialog =
                                 false
@@ -1885,9 +2711,12 @@ fun DataDriftScreen(
                     }
                 ) {
 
-                    Text("Save")
+                    Text(
+                        "Save"
+                    )
                 }
             },
+
 
             dismissButton = {
 
@@ -1900,62 +2729,247 @@ fun DataDriftScreen(
                     }
                 ) {
 
-                    Text("Cancel")
+                    Text(
+                        "Cancel"
+                    )
+                }
+            }
+        )
+    }
+
+
+    // ========================================================
+    // STATUS BAR SETTINGS DIALOG
+    // ========================================================
+
+    if (
+        showStatusBarSettings
+    ) {
+
+        AlertDialog(
+
+            onDismissRequest = {
+
+                showStatusBarSettings =
+                    false
+            },
+
+
+            title = {
+
+                Text(
+                    "Status Bar Speed Settings"
+                )
+            },
+
+
+            text = {
+
+                Column {
+
+                    OutlinedTextField(
+
+                        value =
+                            statusBarXText,
+
+                        onValueChange = {
+
+                            statusBarXText =
+                                it.filter {
+                                        c ->
+                                    c.isDigit()
+                                }
+                        },
+
+                        modifier =
+                            Modifier.fillMaxWidth(),
+
+                        label = {
+
+                            Text(
+                                "X Position"
+                            )
+                        },
+
+                        singleLine =
+                            true
+                    )
+
+
+                    Spacer(
+                        Modifier.height(
+                            8.dp
+                        )
+                    )
+
+
+                    OutlinedTextField(
+
+                        value =
+                            statusBarYText,
+
+                        onValueChange = {
+
+                            statusBarYText =
+                                it.filter {
+                                        c ->
+                                    c.isDigit()
+                                }
+                        },
+
+                        modifier =
+                            Modifier.fillMaxWidth(),
+
+                        label = {
+
+                            Text(
+                                "Y Position"
+                            )
+                        },
+
+                        singleLine =
+                            true
+                    )
+
+
+                    Spacer(
+                        Modifier.height(
+                            8.dp
+                        )
+                    )
+
+
+                    OutlinedTextField(
+
+                        value =
+                            statusBarTextSizeText,
+
+                        onValueChange = {
+
+                            statusBarTextSizeText =
+                                it.filter {
+
+                                        c ->
+
+                                    c.isDigit() ||
+                                            c == '.'
+                                }
+                        },
+
+                        modifier =
+                            Modifier.fillMaxWidth(),
+
+                        label = {
+
+                            Text(
+                                "Text Size"
+                            )
+                        },
+
+                        singleLine =
+                            true
+                    )
+                }
+            },
+
+
+            confirmButton = {
+
+                TextButton(
+
+                    onClick = {
+
+                        val x =
+                            statusBarXText
+                                .toIntOrNull()
+
+
+                        val y =
+                            statusBarYText
+                                .toIntOrNull()
+
+
+                        val size =
+                            statusBarTextSizeText
+                                .toFloatOrNull()
+
+
+                        if (
+                            x != null &&
+                            y != null &&
+                            size != null &&
+                            size > 0f
+                        ) {
+
+                            appPreferences
+                                .edit()
+                                .putInt(
+
+                                    DataMonitorService
+                                        .KEY_STATUS_BAR_SPEED_X,
+
+                                    x
+                                )
+                                .putInt(
+
+                                    DataMonitorService
+                                        .KEY_STATUS_BAR_SPEED_Y,
+
+                                    y
+                                )
+                                .putFloat(
+
+                                    DataMonitorService
+                                        .KEY_STATUS_BAR_SPEED_TEXT_SIZE,
+
+                                    size
+                                )
+                                .apply()
+
+
+                            showStatusBarSettings =
+                                false
+
+
+                            if (
+                                monitoringEnabled
+                            ) {
+
+                                startDataMonitorService(
+                                    context
+                                )
+                            }
+                        }
+                    }
+                ) {
+
+                    Text(
+                        "Save"
+                    )
+                }
+            },
+
+
+            dismissButton = {
+
+                TextButton(
+
+                    onClick = {
+
+                        showStatusBarSettings =
+                            false
+                    }
+                ) {
+
+                    Text(
+                        "Cancel"
+                    )
                 }
             }
         )
     }
 }
 
-// ============================================================
-// PERMISSION CARD
-// ============================================================
-
-@Composable
-fun PermissionCard(
-    title: String,
-    description: String,
-    buttonText: String,
-    onClick: () -> Unit
-) {
-
-    Card(
-        Modifier.fillMaxWidth()
-    ) {
-
-        Column(
-            Modifier.padding(20.dp)
-        ) {
-
-            Text(
-                text = title,
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Bold
-            )
-
-            Spacer(
-                Modifier.height(8.dp)
-            )
-
-            Text(
-                description
-            )
-
-            Spacer(
-                Modifier.height(12.dp)
-            )
-
-            Button(
-                onClick = onClick
-            ) {
-
-                Text(
-                    buttonText
-                )
-            }
-        }
-    }
-}
 
 // ============================================================
 // USAGE CARD
@@ -1963,10 +2977,19 @@ fun PermissionCard(
 
 @Composable
 fun UsageCard(
-    modifier: Modifier,
-    title: String,
-    usage: DataUsageManager.UsageResult,
-    formatBytes: (Long) -> String
+
+    modifier:
+    Modifier,
+
+    title:
+    String,
+
+    usage:
+    DataUsageManager.UsageResult,
+
+    formatBytes:
+        (Long) -> String
+
 ) {
 
     Card(
@@ -1974,35 +2997,161 @@ fun UsageCard(
     ) {
 
         Column(
-            Modifier.padding(16.dp)
+            Modifier.padding(
+                14.dp
+            )
         ) {
 
             Text(
-                text = title,
-                fontSize = 22.sp,
-                fontWeight = FontWeight.Bold
+
+                title,
+
+                fontSize =
+                    18.sp,
+
+                fontWeight =
+                    FontWeight.Bold
             )
 
+
             Spacer(
-                Modifier.height(10.dp)
+                Modifier.height(
+                    6.dp
+                )
             )
+
 
             Text(
-                text =
-                    formatBytes(
-                        usage.totalBytes
-                    ),
-                fontSize = 26.sp,
-                fontWeight = FontWeight.Bold
+
+                formatBytes(
+                    usage.totalBytes
+                ),
+
+                fontSize =
+                    24.sp,
+
+                fontWeight =
+                    FontWeight.Bold
             )
 
+
             Spacer(
-                Modifier.height(10.dp)
+                Modifier.height(
+                    6.dp
+                )
             )
+
+
+            Text(
+
+                "↓ ${
+                    formatBytes(
+                        usage.downloadBytes
+                    )
+                }"
+            )
+
+
+            Text(
+
+                "↑ ${
+                    formatBytes(
+                        usage.uploadBytes
+                    )
+                }"
+            )
+        }
+    }
+}
+
+
+// ============================================================
+// WI-FI USAGE CARD
+// ============================================================
+
+@Composable
+fun WifiUsageCard(
+
+    usage:
+    DataUsageManager.UsageResult,
+
+    wifiDownloadSpeed:
+    String,
+
+    wifiUploadSpeed:
+    String,
+
+    formatBytes:
+        (Long) -> String
+
+) {
+
+    Card(
+        Modifier.fillMaxWidth()
+    ) {
+
+        Column(
+            Modifier.padding(
+                14.dp
+            )
+        ) {
+
+            // ------------------------------------------------
+            // TITLE
+            // ------------------------------------------------
+
+            Text(
+
+                "Wi-Fi Usage",
+
+                fontSize =
+                    18.sp,
+
+                fontWeight =
+                    FontWeight.Bold
+            )
+
+
+            Spacer(
+                Modifier.height(
+                    6.dp
+                )
+            )
+
+
+            // ------------------------------------------------
+            // TOTAL
+            // ------------------------------------------------
+
+            Text(
+
+                formatBytes(
+                    usage.totalBytes
+                ),
+
+                fontSize =
+                    24.sp,
+
+                fontWeight =
+                    FontWeight.Bold
+            )
+
+
+            Spacer(
+                Modifier.height(
+                    6.dp
+                )
+            )
+
+
+            // ------------------------------------------------
+            // TOTAL DOWNLOAD / UPLOAD
+            // ------------------------------------------------
 
             Row {
 
                 Text(
+
                     "↓ ${
                         formatBytes(
                             usage.downloadBytes
@@ -2010,11 +3159,16 @@ fun UsageCard(
                     }"
                 )
 
+
                 Spacer(
-                    Modifier.weight(1f)
+                    Modifier.weight(
+                        1f
+                    )
                 )
 
+
                 Text(
+
                     "↑ ${
                         formatBytes(
                             usage.uploadBytes
@@ -2022,18 +3176,195 @@ fun UsageCard(
                     }"
                 )
             }
+
+
+            Spacer(
+                Modifier.height(
+                    10.dp
+                )
+            )
+
+
+            // ------------------------------------------------
+            // LIVE WI-FI SPEED
+            // ------------------------------------------------
+
+            Text(
+
+                "Real-time Wi-Fi speed",
+
+                fontWeight =
+                    FontWeight.Bold
+            )
+
+
+            Spacer(
+                Modifier.height(
+                    4.dp
+                )
+            )
+
+
+            Row {
+
+                Text(
+                    "↓ $wifiDownloadSpeed"
+                )
+
+
+                Spacer(
+                    Modifier.weight(
+                        1f
+                    )
+                )
+
+
+                Text(
+                    "↑ $wifiUploadSpeed"
+                )
+            }
         }
     }
 }
 
+
 // ============================================================
-// REAL-TIME SPEED CARD
+// STATUS BAR SPEED CARD
+// ============================================================
+
+@Composable
+fun StatusBarSpeedCard(
+
+    enabled:
+    Boolean,
+
+    onEnabledChanged:
+        (Boolean) -> Unit,
+
+    onSettingsClick:
+        () -> Unit
+
+) {
+
+    Card(
+        Modifier.fillMaxWidth()
+    ) {
+
+        Column(
+            Modifier.padding(
+                14.dp
+            )
+        ) {
+
+            Row(
+
+                verticalAlignment =
+                    Alignment.CenterVertically
+            ) {
+
+                Text(
+
+                    "Status Bar Speed",
+
+                    modifier =
+                        Modifier.weight(
+                            1f
+                        ),
+
+                    fontSize =
+                        18.sp,
+
+                    fontWeight =
+                        FontWeight.Bold
+                )
+
+
+                Text(
+
+                    if (
+                        enabled
+                    ) {
+
+                        "ON"
+
+                    } else {
+
+                        "OFF"
+                    }
+                )
+
+
+                Switch(
+
+                    checked =
+                        enabled,
+
+                    onCheckedChange =
+                        onEnabledChanged,
+
+                    modifier =
+                        Modifier.scale(
+                            0.7f
+                        )
+                )
+            }
+
+
+            Spacer(
+                Modifier.height(
+                    6.dp
+                )
+            )
+
+
+            OutlinedButton(
+
+                onClick =
+                    onSettingsClick,
+
+                modifier =
+                    Modifier.fillMaxWidth()
+            ) {
+
+                Icon(
+
+                    imageVector =
+                        Icons.Default.Settings,
+
+                    contentDescription =
+                        "Settings"
+                )
+
+
+                Spacer(
+                    Modifier.width(
+                        6.dp
+                    )
+                )
+
+
+                Text(
+                    "Position & Text Size"
+                )
+            }
+        }
+    }
+}
+
+
+// ============================================================
+// REAL-TIME MOBILE SPEED CARD
 // ============================================================
 
 @Composable
 fun RealTimeSpeedCard(
-    downloadSpeed: String,
-    uploadSpeed: String
+
+    downloadSpeed:
+    String,
+
+    uploadSpeed:
+    String
+
 ) {
 
     Card(
@@ -2045,28 +3376,41 @@ fun RealTimeSpeedCard(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .padding(14.dp),
+                    .padding(
+                        14.dp
+                    ),
 
             verticalAlignment =
                 Alignment.CenterVertically
         ) {
 
             Text(
-                text = "Real-time speed",
-                fontWeight = FontWeight.Bold
+
+                "Real-time speed",
+
+                fontWeight =
+                    FontWeight.Bold
             )
 
+
             Spacer(
-                Modifier.weight(1f)
+                Modifier.weight(
+                    1f
+                )
             )
+
 
             Text(
                 "↓ $downloadSpeed"
             )
 
+
             Spacer(
-                Modifier.width(14.dp)
+                Modifier.width(
+                    14.dp
+                )
             )
+
 
             Text(
                 "↑ $uploadSpeed"
@@ -2075,16 +3419,26 @@ fun RealTimeSpeedCard(
     }
 }
 
+
 // ============================================================
-// DATA LIMIT ALERT CARD
+// DATA ALERT CARD
 // ============================================================
 
 @Composable
 fun DataAlertCard(
-    alert: DataAlert,
-    onEnabledChanged: () -> Unit,
-    onRepeatChanged: () -> Unit,
-    onDelete: () -> Unit
+
+    alert:
+    DataAlert,
+
+    onEnabledChanged:
+        () -> Unit,
+
+    onRepeatChanged:
+        () -> Unit,
+
+    onDelete:
+        () -> Unit
+
 ) {
 
     Card(
@@ -2092,23 +3446,27 @@ fun DataAlertCard(
     ) {
 
         Column(
-            Modifier.padding(14.dp)
+            Modifier.padding(
+                14.dp
+            )
         ) {
 
             Row(
+
                 verticalAlignment =
                     Alignment.CenterVertically
             ) {
 
                 Text(
 
-                    text =
-                        formatDisplayBytes(
-                            alert.limitBytes
-                        ),
+                    formatDisplayBytes(
+                        alert.limitBytes
+                    ),
 
                     modifier =
-                        Modifier.weight(1f),
+                        Modifier.weight(
+                            1f
+                        ),
 
                     fontSize =
                         18.sp,
@@ -2117,13 +3475,21 @@ fun DataAlertCard(
                         FontWeight.Bold
                 )
 
+
                 Text(
-                    if (alert.isEnabled) {
+
+                    if (
+                        alert.isEnabled
+                    ) {
+
                         "ON"
+
                     } else {
+
                         "OFF"
                     }
                 )
+
 
                 Switch(
 
@@ -2131,17 +3497,22 @@ fun DataAlertCard(
                         alert.isEnabled,
 
                     onCheckedChange = {
+
                         onEnabledChanged()
                     },
 
                     modifier =
-                        Modifier.scale(0.7f)
+                        Modifier.scale(
+                            0.7f
+                        )
                 )
             }
+
 
             Row {
 
                 OutlinedButton(
+
                     onClick =
                         onRepeatChanged
                 ) {
@@ -2151,18 +3522,26 @@ fun DataAlertCard(
                         if (
                             alert.isRepeating
                         ) {
+
                             "Repeat ON"
+
                         } else {
+
                             "Repeat OFF"
                         }
                     )
                 }
 
+
                 Spacer(
-                    Modifier.width(8.dp)
+                    Modifier.width(
+                        8.dp
+                    )
                 )
 
+
                 IconButton(
+
                     onClick =
                         onDelete
                 ) {
@@ -2181,28 +3560,68 @@ fun DataAlertCard(
     }
 }
 
+
 // ============================================================
 // DAILY DATA PLAN CARD
 // ============================================================
 
 @Composable
 fun DailyDataPlanCard(
-    enabled: Boolean,
-    saved: Boolean,
-    totalText: String,
-    totalUnit: String,
-    startHour: Int,
-    startMinute: Int,
-    alerts: List<DailyDataAlert>,
-    onToggle: () -> Unit,
-    onEdit: () -> Unit,
-    onTotalTextChanged: (String) -> Unit,
-    onTotalUnitChanged: (String) -> Unit,
-    onAddAlert: () -> Unit,
-    onChangeTime: () -> Unit,
-    onSave: () -> Unit,
-    onAlertEnabledChanged: (Int) -> Unit,
-    onAlertDelete: (Int) -> Unit
+
+    enabled:
+    Boolean,
+
+    saved:
+    Boolean,
+
+    totalText:
+    String,
+
+    totalUnit:
+    String,
+
+    startHour:
+    Int,
+
+    startMinute:
+    Int,
+
+    alerts:
+    List<DailyDataAlert>,
+
+    alertsExpanded:
+    Boolean,
+
+    onAlertsExpandedChanged:
+        () -> Unit,
+
+    onToggle:
+        () -> Unit,
+
+    onEdit:
+        () -> Unit,
+
+    onTotalTextChanged:
+        (String) -> Unit,
+
+    onTotalUnitChanged:
+        (String) -> Unit,
+
+    onAddAlert:
+        () -> Unit,
+
+    onChangeTime:
+        () -> Unit,
+
+    onSave:
+        () -> Unit,
+
+    onAlertEnabledChanged:
+        (Int) -> Unit,
+
+    onAlertDelete:
+        (Int) -> Unit
+
 ) {
 
     Card(
@@ -2210,7 +3629,9 @@ fun DailyDataPlanCard(
     ) {
 
         Column(
-            Modifier.padding(16.dp)
+            Modifier.padding(
+                16.dp
+            )
         ) {
 
             // ------------------------------------------------
@@ -2218,17 +3639,19 @@ fun DailyDataPlanCard(
             // ------------------------------------------------
 
             Row(
+
                 verticalAlignment =
                     Alignment.CenterVertically
             ) {
 
                 Text(
 
-                    text =
-                        "Daily Data Plan",
+                    "Daily Data Plan",
 
                     modifier =
-                        Modifier.weight(1f),
+                        Modifier.weight(
+                            1f
+                        ),
 
                     fontSize =
                         22.sp,
@@ -2237,13 +3660,21 @@ fun DailyDataPlanCard(
                         FontWeight.Bold
                 )
 
+
                 Text(
-                    if (enabled) {
+
+                    if (
+                        enabled
+                    ) {
+
                         "ON"
+
                     } else {
+
                         "OFF"
                     }
                 )
+
 
                 Switch(
 
@@ -2251,26 +3682,32 @@ fun DailyDataPlanCard(
                         enabled,
 
                     onCheckedChange = {
+
                         onToggle()
                     },
 
                     modifier =
-                        Modifier.scale(0.75f)
+                        Modifier.scale(
+                            0.75f
+                        )
                 )
             }
 
+
             Spacer(
-                Modifier.height(14.dp)
+                Modifier.height(
+                    14.dp
+                )
             )
 
+
             // ------------------------------------------------
-            // TOTAL DAILY DATA
+            // TOTAL DATA
             // ------------------------------------------------
 
             Text(
 
-                text =
-                    "Total Daily Data",
+                "Total Daily Data",
 
                 fontSize =
                     18.sp,
@@ -2279,24 +3716,32 @@ fun DailyDataPlanCard(
                     FontWeight.Bold
             )
 
+
             Spacer(
-                Modifier.height(8.dp)
+                Modifier.height(
+                    8.dp
+                )
             )
 
-            if (saved) {
+
+            if (
+                saved
+            ) {
 
                 Row(
+
                     verticalAlignment =
                         Alignment.CenterVertically
                 ) {
 
                     Text(
 
-                        text =
-                            "$totalText $totalUnit",
+                        "$totalText $totalUnit",
 
                         modifier =
-                            Modifier.weight(1f),
+                            Modifier.weight(
+                                1f
+                            ),
 
                         fontSize =
                             24.sp,
@@ -2305,7 +3750,9 @@ fun DailyDataPlanCard(
                             FontWeight.Bold
                     )
 
+
                     OutlinedButton(
+
                         onClick =
                             onEdit
                     ) {
@@ -2329,34 +3776,51 @@ fun DailyDataPlanCard(
                             onTotalTextChanged,
 
                         modifier =
-                            Modifier.weight(1f),
+                            Modifier.weight(
+                                1f
+                            ),
 
                         label = {
-                            Text("Total amount")
+
+                            Text(
+                                "Total amount"
+                            )
                         },
 
                         singleLine =
                             true
                     )
 
+
                     Spacer(
-                        Modifier.width(8.dp)
+                        Modifier.width(
+                            8.dp
+                        )
                     )
+
 
                     Column {
 
-                        SmallButton("MB") {
+                        SmallButton(
+                            "MB"
+                        ) {
 
                             onTotalUnitChanged(
                                 "MB"
                             )
                         }
 
+
                         Spacer(
-                            Modifier.height(4.dp)
+                            Modifier.height(
+                                4.dp
+                            )
                         )
 
-                        SmallButton("GB") {
+
+                        SmallButton(
+                            "GB"
+                        ) {
 
                             onTotalUnitChanged(
                                 "GB"
@@ -2366,18 +3830,21 @@ fun DailyDataPlanCard(
                 }
             }
 
+
             Spacer(
-                Modifier.height(14.dp)
+                Modifier.height(
+                    14.dp
+                )
             )
 
+
             // ------------------------------------------------
-            // DAILY START TIME
+            // START TIME
             // ------------------------------------------------
 
             Text(
 
-                text =
-                    "Daily Start Time",
+                "Daily Start Time",
 
                 fontSize =
                     18.sp,
@@ -2386,31 +3853,41 @@ fun DailyDataPlanCard(
                     FontWeight.Bold
             )
 
+
             Spacer(
-                Modifier.height(4.dp)
+                Modifier.height(
+                    4.dp
+                )
             )
 
+
             Row(
+
                 verticalAlignment =
                     Alignment.CenterVertically
             ) {
 
                 Text(
 
-                    text =
-                        formatTime12Hour(
-                            startHour,
-                            startMinute
-                        ),
+                    formatTime12Hour(
+
+                        startHour,
+
+                        startMinute
+                    ),
 
                     modifier =
-                        Modifier.weight(1f),
+                        Modifier.weight(
+                            1f
+                        ),
 
                     fontSize =
                         18.sp
                 )
 
+
                 OutlinedButton(
+
                     onClick =
                         onChangeTime
                 ) {
@@ -2421,26 +3898,32 @@ fun DailyDataPlanCard(
                 }
             }
 
+
             Spacer(
-                Modifier.height(14.dp)
+                Modifier.height(
+                    14.dp
+                )
             )
 
+
             // ------------------------------------------------
-            // DAILY ALERTS HEADER
+            // DAILY ALERTS
             // ------------------------------------------------
 
             Row(
+
                 verticalAlignment =
                     Alignment.CenterVertically
             ) {
 
                 Text(
 
-                    text =
-                        "Daily Alerts",
+                    "Daily Alerts",
 
                     modifier =
-                        Modifier.weight(1f),
+                        Modifier.weight(
+                            1f
+                        ),
 
                     fontSize =
                         18.sp,
@@ -2449,7 +3932,9 @@ fun DailyDataPlanCard(
                         FontWeight.Bold
                 )
 
+
                 IconButton(
+
                     onClick =
                         onAddAlert
                 ) {
@@ -2465,115 +3950,180 @@ fun DailyDataPlanCard(
                 }
             }
 
-            // ------------------------------------------------
-            // DAILY ALERTS
-            // ------------------------------------------------
-
-            if (alerts.isEmpty()) {
-
-                Text(
-                    "No daily alerts added."
-                )
-
-            } else {
-
-                for (alert in alerts) {
-
-                    Row(
-
-                        modifier =
-                            Modifier
-                                .fillMaxWidth()
-                                .padding(
-                                    vertical = 5.dp
-                                ),
-
-                        verticalAlignment =
-                            Alignment.CenterVertically
-                    ) {
-
-                        Text(
-
-                            text =
-                                formatDisplayBytes(
-                                    alert.limitBytes
-                                ),
-
-                            modifier =
-                                Modifier.weight(1f)
-                        )
-
-                        Text(
-                            if (alert.isEnabled) {
-                                "ON"
-                            } else {
-                                "OFF"
-                            }
-                        )
-
-                        Switch(
-
-                            checked =
-                                alert.isEnabled,
-
-                            onCheckedChange = {
-
-                                onAlertEnabledChanged(
-                                    alert.id
-                                )
-                            },
-
-                            modifier =
-                                Modifier.scale(0.65f)
-                        )
-
-                        IconButton(
-
-                            onClick = {
-
-                                onAlertDelete(
-                                    alert.id
-                                )
-                            }
-                        ) {
-
-                            Icon(
-
-                                imageVector =
-                                    Icons.Default.Delete,
-
-                                contentDescription =
-                                    "Delete"
-                            )
-                        }
-                    }
-                }
-            }
 
             // ------------------------------------------------
-            // SAVE DAILY PLAN
+            // SHOW / HIDE DAILY ALERTS
             // ------------------------------------------------
 
-            Spacer(
-                Modifier.height(12.dp)
-            )
-
-            Button(
+            OutlinedButton(
 
                 onClick =
-                    onSave,
+                    onAlertsExpandedChanged,
 
                 modifier =
                     Modifier.fillMaxWidth()
             ) {
 
                 Text(
-                    "Save Daily Plan"
+
+                    if (
+                        alertsExpanded
+                    ) {
+
+                        "Hide Daily Alerts"
+
+                    } else {
+
+                        "Show Daily Alerts"
+                    }
                 )
+            }
+
+
+            if (
+                alertsExpanded
+            ) {
+
+                Spacer(
+                    Modifier.height(
+                        8.dp
+                    )
+                )
+
+
+                if (
+                    alerts.isEmpty()
+                ) {
+
+                    Text(
+                        "No daily alerts added."
+                    )
+
+                } else {
+
+                    for (
+                    alert in alerts
+                    ) {
+
+                        Row(
+
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(
+                                        vertical = 5.dp
+                                    ),
+
+                            verticalAlignment =
+                                Alignment.CenterVertically
+                        ) {
+
+                            Text(
+
+                                formatDisplayBytes(
+                                    alert.limitBytes
+                                ),
+
+                                modifier =
+                                    Modifier.weight(
+                                        1f
+                                    )
+                            )
+
+
+                            Text(
+
+                                if (
+                                    alert.isEnabled
+                                ) {
+
+                                    "ON"
+
+                                } else {
+
+                                    "OFF"
+
+                                }
+                            )
+
+
+                            Switch(
+
+                                checked =
+                                    alert.isEnabled,
+
+                                onCheckedChange = {
+
+                                    onAlertEnabledChanged(
+                                        alert.id
+                                    )
+                                },
+
+                                modifier =
+                                    Modifier.scale(
+                                        0.65f
+                                    )
+                            )
+
+
+                            IconButton(
+
+                                onClick = {
+
+                                    onAlertDelete(
+                                        alert.id
+                                    )
+                                }
+                            ) {
+
+                                Icon(
+
+                                    imageVector =
+                                        Icons.Default.Delete,
+
+                                    contentDescription =
+                                        "Delete"
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+
+            // ------------------------------------------------
+            // SAVE
+            // ------------------------------------------------
+
+            if (
+                !saved
+            ) {
+
+                Spacer(
+                    Modifier.height(
+                        12.dp
+                    )
+                )
+
+
+                Button(
+
+                    onClick =
+                        onSave,
+
+                    modifier =
+                        Modifier.fillMaxWidth()
+                ) {
+
+                    Text(
+                        "Save Daily Plan"
+                    )
+                }
             }
         }
     }
 }
+
 
 // ============================================================
 // WEEKLY USAGE
@@ -2581,16 +4131,20 @@ fun DailyDataPlanCard(
 
 @Composable
 fun WeeklyUsageGrid(
+
     weeklyUsage:
     List<DataRepository.WeeklyDayUsage>,
+
     formatBytes:
         (Long) -> String
+
 ) {
 
     Column {
 
         var index =
             0
+
 
         while (
             index <
@@ -2611,48 +4165,60 @@ fun WeeklyUsageGrid(
                         val day =
                             weeklyUsage[index]
 
+
                         val date =
                             SimpleDateFormat(
+
                                 "EEE d",
+
                                 Locale.US
-                            ).format(
-                                Date(
-                                    day.startTime
-                                )
                             )
+                                .format(
+
+                                    Date(
+                                        day.startTime
+                                    )
+                                )
+
 
                         Column(
 
                             modifier =
                                 Modifier
-                                    .weight(1f)
-                                    .padding(4.dp)
+                                    .weight(
+                                        1f
+                                    )
+                                    .padding(
+                                        4.dp
+                                    )
                         ) {
 
                             Text(
 
-                                text =
-                                    date,
+                                date,
 
                                 fontWeight =
                                     FontWeight.Bold
                             )
 
+
                             Text(
 
-                                text =
-                                    formatBytes(
-                                        day.totalBytes
-                                    )
+                                formatBytes(
+                                    day.totalBytes
+                                )
                             )
                         }
+
 
                         index++
 
                     } else {
 
                         Spacer(
-                            Modifier.weight(1f)
+                            Modifier.weight(
+                                1f
+                            )
                         )
                     }
                 }
@@ -2661,17 +4227,100 @@ fun WeeklyUsageGrid(
     }
 }
 
+
+// ============================================================
+// PERMISSION CARD
+// ============================================================
+
+@Composable
+fun PermissionCard(
+
+    title:
+    String,
+
+    description:
+    String,
+
+    buttonText:
+    String,
+
+    onClick:
+        () -> Unit
+
+) {
+
+    Card(
+        Modifier.fillMaxWidth()
+    ) {
+
+        Column(
+            Modifier.padding(
+                14.dp
+            )
+        ) {
+
+            Text(
+
+                title,
+
+                fontSize =
+                    18.sp,
+
+                fontWeight =
+                    FontWeight.Bold
+            )
+
+
+            Spacer(
+                Modifier.height(
+                    5.dp
+                )
+            )
+
+
+            Text(
+                description
+            )
+
+
+            Spacer(
+                Modifier.height(
+                    8.dp
+                )
+            )
+
+
+            Button(
+                onClick =
+                    onClick
+            ) {
+
+                Text(
+                    buttonText
+                )
+            }
+        }
+    }
+}
+
+
 // ============================================================
 // SMALL BUTTON
 // ============================================================
 
 @Composable
 fun SmallButton(
-    text: String,
-    onClick: () -> Unit
+
+    text:
+    String,
+
+    onClick:
+        () -> Unit
+
 ) {
 
     OutlinedButton(
+
         onClick =
             onClick
     ) {
@@ -2682,124 +4331,6 @@ fun SmallButton(
     }
 }
 
-// ============================================================
-// UI CUSTOM USAGE
-// ============================================================
-//
-// IMPORTANT FIX:
-//
-// MainActivity no longer calculates Custom using:
-//
-//     dataRepository.getCustomUsage()
-//
-// Instead it reads the value saved by DataMonitorService.
-//
-// Therefore:
-//
-// DataMonitorService Custom
-//          ↓
-// datadrift_custom_frozen
-//          ↓
-// MainActivity Custom card
-//
-// This keeps the Custom card and Daily Data Plan alert
-// on the same Custom calculation.
-//
-// ============================================================
-
-fun getUiCustomUsage(
-    plan: DailyDataPlan,
-    frozenPreferences:
-    android.content.SharedPreferences
-): DataUsageManager.UsageResult {
-
-    /*
-     * Calculate the CURRENT cycle according to the user's
-     * selected Daily Data Plan start time.
-     *
-     * Example:
-     *
-     * Start = 12:00 PM
-     *
-     * At 11:00 AM:
-     * cycle = yesterday 12:00 PM
-     *
-     * At 12:00 PM:
-     * cycle = today 12:00 PM
-     */
-
-    val cycleStart =
-        calculateDailyCycleStart(
-            plan.startHour,
-            plan.startMinute
-        )
-
-    val savedCycle =
-        frozenPreferences.getLong(
-            "cycle_start",
-            0L
-        )
-
-    /*
-     * Only use the service value if it belongs to
-     * the current Daily Plan cycle.
-     */
-
-    return if (
-        savedCycle ==
-        cycleStart
-    ) {
-
-        getFrozenCustomUsageForUi(
-            frozenPreferences
-        )
-
-    } else {
-
-        /*
-         * Service has not initialized the new cycle yet.
-         *
-         * IMPORTANT:
-         * Do not calculate NetworkStats here.
-         *
-         * Otherwise MainActivity and DataMonitorService
-         * can again show different values.
-         */
-
-        emptyUsage()
-    }
-}
-
-// ============================================================
-// FROZEN CUSTOM FOR UI
-// ============================================================
-
-fun getFrozenCustomUsageForUi(
-    frozenPreferences:
-    android.content.SharedPreferences
-): DataUsageManager.UsageResult {
-
-    return DataUsageManager.UsageResult(
-
-        downloadBytes =
-            frozenPreferences.getLong(
-                "download_bytes",
-                0L
-            ),
-
-        uploadBytes =
-            frozenPreferences.getLong(
-                "upload_bytes",
-                0L
-            ),
-
-        totalBytes =
-            frozenPreferences.getLong(
-                "total_bytes",
-                0L
-            )
-    )
-}
 
 // ============================================================
 // EMPTY USAGE
@@ -2821,113 +4352,474 @@ fun emptyUsage():
     )
 }
 
+
 // ============================================================
-// DAILY CYCLE START
+// UI CUSTOM USAGE
 // ============================================================
+//
+// IMPORTANT:
+//
+// Daily cycle resets at MIDNIGHT.
+//
+// Daily Start Time decides when Custom starts counting.
 //
 // Example:
 //
-// Start = 12:00 PM
+// Start = 12 PM
 //
-// At 10:00 AM:
-// yesterday 12:00 PM
-//
-// At 1:00 PM:
-// today 12:00 PM
+// 8 AM  -> Custom = 0
+// 11 AM -> Custom = 0
+// 1 PM  -> Custom = 12 PM -> 1 PM
 //
 // ============================================================
 
-fun calculateDailyCycleStart(
-    startHour: Int,
-    startMinute: Int
-): Long {
+fun getUiCustomUsage(
+
+    context:
+    Context,
+
+    dataRepository:
+    DataRepository,
+
+    plan:
+    DailyDataPlan?,
+
+    frozenPreferences:
+    android.content.SharedPreferences
+
+):
+        DataUsageManager.UsageResult {
+
+    if (
+        plan == null ||
+        !plan.isEnabled ||
+        plan.totalDataBytes <= 0L
+    ) {
+
+        return DataUsageManager.UsageResult(
+
+            frozenPreferences.getLong(
+                "download_bytes",
+                0L
+            ),
+
+            frozenPreferences.getLong(
+                "upload_bytes",
+                0L
+            ),
+
+            frozenPreferences.getLong(
+                "total_bytes",
+                0L
+            )
+        )
+    }
+
 
     val now =
+        System.currentTimeMillis()
+
+
+    val start =
+        getTodayConfiguredStart(
+
+            plan.startHour,
+
+            plan.startMinute,
+
+            now
+        )
+
+
+    // --------------------------------------------------------
+    // Before Daily Start Time
+    // --------------------------------------------------------
+
+    if (
+        now < start
+    ) {
+
+        return emptyUsage()
+    }
+
+
+    val raw =
+        dataRepository.getCustomUsage(
+            start
+        )
+
+
+    // --------------------------------------------------------
+    // Cap Custom to Daily Plan
+    // --------------------------------------------------------
+
+    if (
+        raw.totalBytes <=
+        plan.totalDataBytes
+    ) {
+
+        return raw
+    }
+
+
+    val download =
+        raw.downloadBytes
+            .coerceAtMost(
+                plan.totalDataBytes
+            )
+
+
+    val remaining =
+        (
+                plan.totalDataBytes -
+                        download
+                )
+            .coerceAtLeast(
+                0L
+            )
+
+
+    val upload =
+        raw.uploadBytes
+            .coerceAtMost(
+                remaining
+            )
+
+
+    return DataUsageManager.UsageResult(
+
+        downloadBytes =
+            download,
+
+        uploadBytes =
+            upload,
+
+        totalBytes =
+            download +
+                    upload
+    )
+}
+
+
+// ============================================================
+// TODAY CONFIGURED START
+// ============================================================
+
+fun getTodayConfiguredStart(
+
+    hour:
+    Int,
+
+    minute:
+    Int,
+
+    now:
+    Long
+
+): Long {
+
+    val calendar =
         Calendar.getInstance()
 
-    val cycle =
-        Calendar.getInstance()
 
-    cycle.set(
+    calendar.timeInMillis =
+        now
+
+
+    calendar.set(
+
         Calendar.HOUR_OF_DAY,
-        startHour
+
+        hour.coerceIn(
+            0,
+            23
+        )
     )
 
-    cycle.set(
+
+    calendar.set(
+
         Calendar.MINUTE,
-        startMinute
+
+        minute.coerceIn(
+            0,
+            59
+        )
     )
 
-    cycle.set(
+
+    calendar.set(
         Calendar.SECOND,
         0
     )
 
-    cycle.set(
+
+    calendar.set(
         Calendar.MILLISECOND,
         0
     )
 
-    if (
-        now.timeInMillis <
-        cycle.timeInMillis
-    ) {
 
-        cycle.add(
-            Calendar.DAY_OF_MONTH,
-            -1
-        )
-    }
-
-    return cycle.timeInMillis
+    return calendar.timeInMillis
 }
 
+
 // ============================================================
-// START MONITORING SERVICE
+// TODAY WI-FI USAGE
 // ============================================================
 
-fun startDataMonitorService(
-    context: Context
-) {
+fun getTodayWifiUsage(
+    context:
+    Context
+):
+        DataUsageManager.UsageResult {
 
-    val intent =
-        Intent(
-            context,
-            DataMonitorService::class.java
-        )
+    val startTime =
+        getTodayMidnight()
 
-    if (
-        Build.VERSION.SDK_INT >=
-        Build.VERSION_CODES.O
-    ) {
 
-        ContextCompat
-            .startForegroundService(
-                context,
-                intent
+    val endTime =
+        System.currentTimeMillis()
+
+
+    return try {
+
+        val manager =
+
+            context.getSystemService(
+                Context.NETWORK_STATS_SERVICE
+            ) as NetworkStatsManager
+
+
+        val stats =
+            manager.querySummary(
+
+                ConnectivityManager.TYPE_WIFI,
+
+                null,
+
+                startTime,
+
+                endTime
             )
 
-    } else {
 
-        context.startService(
-            intent
+        val bucket =
+            NetworkStats.Bucket()
+
+
+        var download =
+            0L
+
+
+        var upload =
+            0L
+
+
+        while (
+            stats.hasNextBucket()
+        ) {
+
+            stats.getNextBucket(
+                bucket
+            )
+
+
+            download +=
+                bucket.rxBytes
+
+
+            upload +=
+                bucket.txBytes
+        }
+
+
+        stats.close()
+
+
+        DataUsageManager.UsageResult(
+
+            downloadBytes =
+                download,
+
+            uploadBytes =
+                upload,
+
+            totalBytes =
+                download +
+                        upload
+        )
+
+    } catch (
+        _: Exception
+    ) {
+
+        emptyUsage()
+    }
+}
+
+
+// ============================================================
+// WI-FI INTERFACE LIVE BYTES
+// ============================================================
+//
+// Finds the actual Wi-Fi network interface instead of
+// hardcoding wlan0.
+//
+// ============================================================
+
+fun getWifiInterfaceBytes(
+    context:
+    Context
+):
+        Pair<Long, Long> {
+
+    return try {
+
+        val connectivityManager =
+
+            context.getSystemService(
+                Context.CONNECTIVITY_SERVICE
+            ) as ConnectivityManager
+
+
+        for (
+        network in
+        connectivityManager.allNetworks
+        ) {
+
+            val capabilities =
+                connectivityManager
+                    .getNetworkCapabilities(
+                        network
+                    )
+                    ?: continue
+
+
+            if (
+                capabilities.hasTransport(
+                    NetworkCapabilities.TRANSPORT_WIFI
+                )
+            ) {
+
+                val linkProperties =
+                    connectivityManager
+                        .getLinkProperties(
+                            network
+                        )
+
+
+                val interfaceName =
+                    linkProperties
+                        ?.interfaceName
+
+
+                if (
+                    !interfaceName.isNullOrBlank()
+                ) {
+
+                    val rx =
+                        TrafficStats
+                            .getRxBytes(
+                                interfaceName
+                            )
+
+
+                    val tx =
+                        TrafficStats
+                            .getTxBytes(
+                                interfaceName
+                            )
+
+
+                    if (
+                        rx >= 0L &&
+                        tx >= 0L
+                    ) {
+
+                        return Pair(
+                            rx,
+                            tx
+                        )
+                    }
+                }
+            }
+        }
+
+
+        Pair(
+            0L,
+            0L
+        )
+
+    } catch (
+        _: Exception
+    ) {
+
+        Pair(
+            0L,
+            0L
         )
     }
 }
+
+
+// ============================================================
+// TODAY MIDNIGHT
+// ============================================================
+
+fun getTodayMidnight(): Long {
+
+    val calendar =
+        Calendar.getInstance()
+
+
+    calendar.set(
+        Calendar.HOUR_OF_DAY,
+        0
+    )
+
+
+    calendar.set(
+        Calendar.MINUTE,
+        0
+    )
+
+
+    calendar.set(
+        Calendar.SECOND,
+        0
+    )
+
+
+    calendar.set(
+        Calendar.MILLISECOND,
+        0
+    )
+
+
+    return calendar.timeInMillis
+}
+
 
 // ============================================================
 // DATA -> BYTES
 // ============================================================
 
 fun getDataBytes(
-    text: String,
-    unit: String
+
+    text:
+    String,
+
+    unit:
+    String
+
 ): Long {
 
     val amount =
-        text
-            .toDoubleOrNull()
+        text.toDoubleOrNull()
             ?: return 0L
+
 
     if (
         amount <= 0.0
@@ -2936,19 +4828,26 @@ fun getDataBytes(
         return 0L
     }
 
+
     return convertToBytes(
         amount,
         unit
     )
 }
 
+
 // ============================================================
-// CONVERT DATA
+// CONVERT TO BYTES
 // ============================================================
 
 fun convertToBytes(
-    amount: Double,
-    unit: String
+
+    amount:
+    Double,
+
+    unit:
+    String
+
 ): Long {
 
     val multiplier =
@@ -2967,19 +4866,26 @@ fun convertToBytes(
                     1024.0
         }
 
+
     return (
             amount *
                     multiplier
             ).toLong()
 }
 
+
 // ============================================================
-// 12 HOUR -> 24 HOUR
+// CONVERT 12H -> 24H
 // ============================================================
 
 fun convertTo24Hour(
-    hour: Int,
-    period: String
+
+    hour:
+    Int,
+
+    period:
+    String
+
 ): Int {
 
     return when {
@@ -2990,12 +4896,14 @@ fun convertTo24Hour(
             0
         }
 
+
         period == "PM" &&
                 hour != 12 -> {
 
             hour + 12
         }
 
+
         else -> {
 
             hour
@@ -3003,38 +4911,35 @@ fun convertTo24Hour(
     }
 }
 
-// ============================================================
-// DISPLAY HOUR
-// ============================================================
-
-fun displayHour(
-    hour: Int
-): Int {
-
-    return when {
-
-        hour == 0 -> {
-            12
-        }
-
-        hour > 12 -> {
-            hour - 12
-        }
-
-        else -> {
-            hour
-        }
-    }
-}
 
 // ============================================================
 // FORMAT TIME
 // ============================================================
 
 fun formatTime12Hour(
-    hour: Int,
-    minute: Int
+
+    hour:
+    Int,
+
+    minute:
+    Int
+
 ): String {
+
+    val displayHour =
+
+        when {
+
+            hour == 0 ->
+                12
+
+            hour > 12 ->
+                hour - 12
+
+            else ->
+                hour
+        }
+
 
     val period =
 
@@ -3049,15 +4954,14 @@ fun formatTime12Hour(
             "AM"
         }
 
+
     return String.format(
 
         Locale.US,
 
         "%d:%02d %s",
 
-        displayHour(
-            hour
-        ),
+        displayHour,
 
         minute,
 
@@ -3065,12 +4969,16 @@ fun formatTime12Hour(
     )
 }
 
+
 // ============================================================
 // FORMAT SPEED
 // ============================================================
 
 fun formatSpeed(
-    bytesPerSecond: Long
+
+    bytesPerSecond:
+    Long
+
 ): String {
 
     if (
@@ -3080,163 +4988,124 @@ fun formatSpeed(
         return "0 KB/s"
     }
 
+
     val kb =
         1024.0
 
+
     val mb =
-        kb * 1024.0
+        kb *
+                1024.0
+
 
     val gb =
-        mb * 1024.0
+        mb *
+                1024.0
+
 
     return when {
 
         bytesPerSecond >= gb -> {
 
             String.format(
+
                 Locale.US,
+
                 "%.2f GB/s",
-                bytesPerSecond / gb
+
+                bytesPerSecond /
+                        gb
             )
         }
+
 
         bytesPerSecond >= mb -> {
 
             String.format(
+
                 Locale.US,
+
                 "%.2f MB/s",
-                bytesPerSecond / mb
+
+                bytesPerSecond /
+                        mb
             )
         }
+
 
         else -> {
 
             String.format(
+
                 Locale.US,
+
                 "%.0f KB/s",
-                bytesPerSecond / kb
+
+                bytesPerSecond /
+                        kb
             )
         }
     }
 }
+
 
 // ============================================================
 // FORMAT DISPLAY BYTES
 // ============================================================
 
 fun formatDisplayBytes(
-    bytes: Long
+
+    bytes:
+    Long
+
 ): String {
 
     val mb =
         1024.0 *
                 1024.0
 
+
     val gb =
         mb *
                 1024.0
 
+
     return if (
         bytes >= gb
     ) {
 
         String.format(
+
             Locale.US,
+
             "%.2f GB",
-            bytes / gb
+
+            bytes /
+                    gb
         )
 
     } else {
 
         String.format(
+
             Locale.US,
+
             "%.0f MB",
-            bytes / mb
+
+            bytes /
+                    mb
         )
     }
 }
 
-// ============================================================
-// BYTES -> DISPLAY VALUE
-// ============================================================
-
-fun bytesToDisplayValue(
-    bytes: Long
-): Pair<String, String> {
-
-    val gb =
-        1024.0 *
-                1024.0 *
-                1024.0
-
-    val mb =
-        1024.0 *
-                1024.0
-
-    return if (
-        bytes >= gb
-    ) {
-
-        val value =
-            bytes / gb
-
-        Pair(
-
-            if (
-                value % 1.0 == 0.0
-            ) {
-
-                value
-                    .toLong()
-                    .toString()
-
-            } else {
-
-                String.format(
-                    Locale.US,
-                    "%.2f",
-                    value
-                )
-            },
-
-            "GB"
-        )
-
-    } else {
-
-        val value =
-            bytes / mb
-
-        Pair(
-
-            if (
-                value % 1.0 == 0.0
-            ) {
-
-                value
-                    .toLong()
-                    .toString()
-
-            } else {
-
-                String.format(
-                    Locale.US,
-                    "%.2f",
-                    value
-                )
-            },
-
-            "MB"
-        )
-    }
-}
 
 // ============================================================
-// OVERLAY PERMISSION CHECK
+// CHECK OVERLAY PERMISSION
 // ============================================================
 
 fun checkOverlayPermission(
-    context: Context
+    context:
+    Context
 ): Boolean {
 
     return if (
@@ -3251,5 +5120,71 @@ fun checkOverlayPermission(
     } else {
 
         true
+    }
+}
+
+
+// ============================================================
+// START MONITORING SERVICE
+// ============================================================
+
+fun startDataMonitorService(
+    context:
+    Context
+) {
+
+    val intent =
+        Intent(
+
+            context,
+
+            DataMonitorService::class.java
+        )
+
+
+    if (
+        Build.VERSION.SDK_INT >=
+        Build.VERSION_CODES.O
+    ) {
+
+        ContextCompat
+            .startForegroundService(
+
+                context,
+
+                intent
+            )
+
+    } else {
+
+        context.startService(
+            intent
+        )
+    }
+}
+
+
+// ============================================================
+// DOUBLE -> CLEAN NUMBER
+// ============================================================
+
+fun Double.toCleanNumber():
+        String {
+
+    return if (
+        this % 1.0 == 0.0
+    ) {
+
+        this
+            .toLong()
+            .toString()
+
+    } else {
+
+        String.format(
+            Locale.US,
+            "%.2f",
+            this
+        )
     }
 }
