@@ -6,11 +6,12 @@ package com.example.datadrift.data
 // RESPONSIBILITY:
 //
 // 1. Mobile data usage calculate karna
-// 2. Downloaded data (RX) calculate karna
-// 3. Uploaded data (TX) calculate karna
-// 4. Total data calculate karna
-// 5. Usage Access permission check karna
-// 6. Total usage ko MB / GB / TB mein format karna
+// 2. Wi-Fi data usage calculate karna
+// 3. Downloaded data (RX) calculate karna
+// 4. Uploaded data (TX) calculate karna
+// 5. Total data calculate karna
+// 6. Usage Access permission check karna
+// 7. Total usage ko MB / GB / TB mein format karna
 //
 // IMPORTANT:
 //
@@ -21,10 +22,6 @@ package com.example.datadrift.data
 // 1.25 GB
 // 18.72 GB
 // 1.20 TB
-//
-// SPEED:
-// 450 KB/s
-// 2.4 MB/s
 //
 // Speed formatting DataMonitorService mein hoga.
 // ============================================================
@@ -144,6 +141,151 @@ class DataUsageManager(
 
             // ------------------------------------------------
             // Read every network bucket
+            // ------------------------------------------------
+
+            val bucket =
+                NetworkStats.Bucket()
+
+
+            while (
+                networkStats.hasNextBucket()
+            ) {
+
+                networkStats.getNextBucket(
+                    bucket
+                )
+
+
+                // Download
+                downloadBytes +=
+                    bucket.rxBytes
+
+
+                // Upload
+                uploadBytes +=
+                    bucket.txBytes
+            }
+
+
+        } catch (
+            e: SecurityException
+        ) {
+
+            downloadBytes = 0L
+            uploadBytes = 0L
+
+
+        } catch (
+            e: Exception
+        ) {
+
+            downloadBytes = 0L
+            uploadBytes = 0L
+
+
+        } finally {
+
+            // ------------------------------------------------
+            // NetworkStats close
+            // ------------------------------------------------
+
+            networkStats?.close()
+        }
+
+
+        // ====================================================
+        // TOTAL
+        // ====================================================
+
+        val totalBytes =
+            downloadBytes + uploadBytes
+
+
+        return UsageResult(
+
+            downloadBytes =
+                downloadBytes,
+
+            uploadBytes =
+                uploadBytes,
+
+            totalBytes =
+                totalBytes
+        )
+    }
+
+
+    // ========================================================
+    // WI-FI DATA USAGE
+    // ========================================================
+    //
+    // Ye selected time period mein device ka total Wi-Fi
+    // usage calculate karega.
+    //
+    // RX = Download
+    // TX = Upload
+    // Total = Download + Upload
+    //
+    // Example:
+    //
+    // Wi-Fi Download = 500 MB
+    // Wi-Fi Upload   = 20 MB
+    // Wi-Fi Total    = 520 MB
+    //
+    // IMPORTANT:
+    //
+    // TYPE_WIFI device ke aggregate Wi-Fi usage ko read karta
+    // hai. Ye kisi ek particular Wi-Fi router / SSID ko
+    // separately identify nahi karta.
+    // ========================================================
+
+    fun getWifiDataUsage(
+        startTime: Long,
+        endTime: Long
+    ): UsageResult {
+
+        // ----------------------------------------------------
+        // Usage Access nahi hai
+        // ----------------------------------------------------
+
+        if (!hasUsageAccess()) {
+
+            return UsageResult(
+                downloadBytes = 0L,
+                uploadBytes = 0L,
+                totalBytes = 0L
+            )
+        }
+
+
+        // ----------------------------------------------------
+        // Variables
+        // ----------------------------------------------------
+
+        var downloadBytes = 0L
+        var uploadBytes = 0L
+
+        var networkStats:
+                NetworkStats? = null
+
+
+        try {
+
+            // ------------------------------------------------
+            // Wi-Fi network statistics
+            // ------------------------------------------------
+
+            networkStats =
+                networkStatsManager.querySummary(
+                    ConnectivityManager.TYPE_WIFI,
+                    null,
+                    startTime,
+                    endTime
+                )
+
+
+            // ------------------------------------------------
+            // Read every Wi-Fi network bucket
             // ------------------------------------------------
 
             val bucket =

@@ -5,31 +5,35 @@ package com.example.datadrift.service
 // ============================================================
 //
 // Handles:
+//
 // 1. Background monitoring
 // 2. Today / Total usage
 // 3. Custom usage
 // 4. Custom freeze when Daily Plan is OFF
 // 5. Custom resume when Daily Plan is ON
-// 6. Today Data Limit Alerts
-// 7. Today Repeat Alerts
-// 8. Daily Data Plan Alerts
-// 9. Daily cycle reset
-// 10. Persistent monitoring notification
-// 11. Live download/upload speed
-// 12. Status-bar download speed overlay
+// 6. Custom usage limit according to Daily Data Plan
+// 7. Today Data Limit Alerts
+// 8. Today Repeat Alerts
+// 9. Daily Data Plan Alerts
+// 10. Daily Plan reset at midnight
+// 11. Persistent monitoring notification
+// 12. Live mobile download/upload speed
+// 13. Status-bar download speed overlay
+// 14. Status-bar speed ON/OFF
+// 15. Status-bar X/Y/Text Size settings
 //
-// IMPORTANT:
+// DAILY PLAN CYCLE:
 //
-// Data Limit Alerts:
+//     12:00 AM -> next 12:00 AM
 //
-//     TODAY -> Data Limit Alerts
+// Daily Start Time only decides when Custom usage
+// starts counting during the current calendar day.
 //
-// Daily Data Plan:
-//
-//     CUSTOM -> Daily Data Plan
-//
-// These two systems are completely separate.
-//
+// ============================================================
+
+
+// ============================================================
+// IMPORTS
 // ============================================================
 
 import android.app.Notification
@@ -86,20 +90,15 @@ class DataMonitorService : Service() {
     // MANAGERS
     // ========================================================
 
-    private lateinit var dataUsageManager:
-            DataUsageManager
+    private lateinit var dataUsageManager: DataUsageManager
 
-    private lateinit var dataRepository:
-            DataRepository
+    private lateinit var dataRepository: DataRepository
 
-    private lateinit var alertStorage:
-            DataAlertStorage
+    private lateinit var alertStorage: DataAlertStorage
 
-    private lateinit var dailyPlanStorage:
-            DailyDataPlanStorage
+    private lateinit var dailyPlanStorage: DailyDataPlanStorage
 
-    private lateinit var systemNotificationManager:
-            NotificationManager
+    private lateinit var systemNotificationManager: NotificationManager
 
 
     // ========================================================
@@ -127,9 +126,8 @@ class DataMonitorService : Service() {
 
                 } catch (_: Exception) {
 
-                    // Keep service alive if
+                    // Keep service alive even if
                     // one monitoring cycle fails.
-
                 }
 
                 handler.postDelayed(
@@ -141,50 +139,43 @@ class DataMonitorService : Service() {
 
 
     // ========================================================
-    // SPEED STATE
+    // MOBILE SPEED STATE
     // ========================================================
 
-    private var previousRxBytes =
-        0L
+    private var previousRxBytes = 0L
 
-    private var previousTxBytes =
-        0L
+    private var previousTxBytes = 0L
 
-    private var previousSpeedTime =
-        0L
+    private var previousSpeedTime = 0L
 
-    private var speedInitialized =
-        false
+    private var speedInitialized = false
 
 
     // ========================================================
-    // OVERLAY
+    // STATUS BAR OVERLAY
     // ========================================================
 
-    private var windowManager:
-            WindowManager? = null
+    private var windowManager: WindowManager? = null
 
-    private var speedTextView:
-            TextView? = null
+    private var speedTextView: TextView? = null
+
+
+    // ========================================================
+    // CUSTOM ALERT RUNTIME
+    // ========================================================
+
+    private var previousCustomUsage = 0L
+
+    private var customUsageInitialized = false
 
 
     // ========================================================
     // TODAY ALERT RUNTIME
     // ========================================================
-    //
-    // IMPORTANT:
-    //
-    // These values belong to TODAY Data Limit Alerts.
-    //
-    // They do NOT belong to Custom or Daily Plan.
-    //
-    // ========================================================
 
-    private var previousTodayUsage =
-        0L
+    private var previousTodayUsage = 0L
 
-    private var todayAlertUsageInitialized =
-        false
+    private var todayAlertUsageInitialized = false
 
 
     // ========================================================
@@ -194,7 +185,6 @@ class DataMonitorService : Service() {
     override fun onCreate() {
 
         super.onCreate()
-
 
         // ----------------------------------------------------
         // Managers
@@ -230,19 +220,17 @@ class DataMonitorService : Service() {
 
 
         // ----------------------------------------------------
-        // Foreground service
+        // Start foreground service
         // ----------------------------------------------------
 
         startForeground(
-
             MONITOR_NOTIFICATION_ID,
-
             createInitialForegroundNotification()
         )
 
 
         // ----------------------------------------------------
-        // Speed
+        // Initialize speed
         // ----------------------------------------------------
 
         initializeSpeedCounters()
@@ -267,6 +255,19 @@ class DataMonitorService : Service() {
         flags: Int,
         startId: Int
     ): Int {
+
+        // ----------------------------------------------------
+        // If service already exists and MainActivity changes
+        // overlay settings, refresh monitoring immediately.
+        // ----------------------------------------------------
+
+        handler.removeCallbacks(
+            monitoringRunnable
+        )
+
+        handler.post(
+            monitoringRunnable
+        )
 
         return START_STICKY
     }
@@ -311,7 +312,7 @@ class DataMonitorService : Service() {
     private fun performMonitoring() {
 
         // ----------------------------------------------------
-        // Check monitoring switch
+        // App settings
         // ----------------------------------------------------
 
         val appPreferences =
@@ -320,11 +321,17 @@ class DataMonitorService : Service() {
                 Context.MODE_PRIVATE
             )
 
+
         val monitoringEnabled =
             appPreferences.getBoolean(
                 KEY_MONITORING_ENABLED,
                 true
             )
+
+
+        // ----------------------------------------------------
+        // Monitoring OFF
+        // ----------------------------------------------------
 
         if (!monitoringEnabled) {
 
@@ -357,13 +364,7 @@ class DataMonitorService : Service() {
 
 
         // ====================================================
-        // TODAY
-        // ====================================================
-        //
-        // This is the source for:
-        //
-        // TODAY -> DATA LIMIT ALERTS
-        //
+        // TODAY USAGE
         // ====================================================
 
         val todayUsage =
@@ -377,17 +378,14 @@ class DataMonitorService : Service() {
         val dailyPlan =
             dailyPlanStorage.loadPlan()
 
+
         val dailyPlanEnabled =
             dailyPlan?.isEnabled == true &&
                     dailyPlan.totalDataBytes > 0L
 
 
         // ====================================================
-        // CUSTOM
-        // ====================================================
-        //
-        // Custom remains connected only to Daily Data Plan.
-        //
+        // CUSTOM USAGE
         // ====================================================
 
         val customCalculation =
@@ -403,15 +401,17 @@ class DataMonitorService : Service() {
                     now
             )
 
+
         val customUsage =
             customCalculation.usage
+
 
         val customCycleStart =
             customCalculation.cycleStart
 
 
         // ====================================================
-        // SPEED
+        // MOBILE SPEED
         // ====================================================
 
         val speed =
@@ -421,8 +421,7 @@ class DataMonitorService : Service() {
         // ====================================================
         // MONITORING NOTIFICATION
         // ====================================================
-
-        // ----------------------------------------------------
+        //
         // Daily Plan OFF
         //     -> Total
         //
@@ -431,11 +430,13 @@ class DataMonitorService : Service() {
         //
         // Daily Plan ON and start time reached
         //     -> Custom
-        // ----------------------------------------------------
+        //
+        // ====================================================
 
         val customCycleActive =
             dailyPlanEnabled &&
                     customCycleStart > 0L
+
 
         val usageLabel =
             if (customCycleActive) {
@@ -446,6 +447,7 @@ class DataMonitorService : Service() {
 
                 "Total"
             }
+
 
         val notificationUsage =
             if (customCycleActive) {
@@ -481,33 +483,15 @@ class DataMonitorService : Service() {
         // ====================================================
         // TODAY DATA LIMIT ALERTS
         // ====================================================
-        //
-        // VERY IMPORTANT:
-        //
-        // Data Limit Alerts use TODAY usage.
-        //
-        // They do NOT use Custom usage.
-        //
-        // They do NOT depend on Daily Data Plan.
-        //
-        // ====================================================
 
         checkTodayDataLimitAlerts(
-
             currentTodayBytes =
                 todayUsage.totalBytes
         )
 
 
         // ====================================================
-        // DAILY PLAN ALERTS
-        // ====================================================
-        //
-        // Daily Data Plan uses Custom usage.
-        //
-        // This remains completely separate from
-        // Today Data Limit Alerts.
-        //
+        // DAILY DATA PLAN ALERTS
         // ====================================================
 
         if (
@@ -531,10 +515,18 @@ class DataMonitorService : Service() {
 
 
         // ====================================================
-        // STATUS BAR OVERLAY
+        // STATUS BAR SPEED OVERLAY
         // ====================================================
 
+        val statusBarSpeedEnabled =
+            appPreferences.getBoolean(
+                KEY_STATUS_BAR_SPEED_ENABLED,
+                DEFAULT_STATUS_BAR_SPEED_ENABLED
+            )
+
+
         if (
+            statusBarSpeedEnabled &&
             isMobileDataActive() &&
             isPortraitOrientation()
         ) {
@@ -568,11 +560,14 @@ class DataMonitorService : Service() {
     // CUSTOM USAGE
     // ========================================================
     //
-    // IMPORTANT:
+    // RULES:
     //
-    // Custom is ONLY controlled by Daily Data Plan.
-    //
-    // Data Limit Alerts do NOT use this function.
+    // 1. Daily Plan OFF -> keep frozen Custom
+    // 2. Daily Plan ON -> calculate Custom
+    // 3. Midnight -> new cycle
+    // 4. Before selected start -> Custom = 0
+    // 5. After selected start -> count mobile data
+    // 6. Custom cannot exceed Daily Plan total
     //
     // ========================================================
 
@@ -613,7 +608,15 @@ class DataMonitorService : Service() {
 
 
         // ====================================================
-        // TODAY'S SELECTED START TIME
+        // TODAY MIDNIGHT
+        // ====================================================
+
+        val todayMidnight =
+            getTodayStartTime()
+
+
+        // ====================================================
+        // USER SELECTED DAILY START
         // ====================================================
 
         val todayStart =
@@ -631,13 +634,38 @@ class DataMonitorService : Service() {
 
 
         // ====================================================
-        // BEFORE TODAY'S START
+        // BEFORE SELECTED START
         // ====================================================
 
         if (
-            now <
-            todayStart
+            now < todayStart
         ) {
+
+            saveRuntimeState(
+
+                cycle =
+                    todayMidnight,
+
+                enabled =
+                    true,
+
+                baselineDownload =
+                    0L,
+
+                baselineUpload =
+                    0L
+            )
+
+
+            saveFrozenCustomUsage(
+
+                usage =
+                    emptyUsage(),
+
+                cycleStart =
+                    todayMidnight
+            )
+
 
             return CustomCalculation(
 
@@ -651,25 +679,25 @@ class DataMonitorService : Service() {
 
 
         // ====================================================
-        // CURRENT CYCLE
+        // CURRENT DAILY CYCLE
         // ====================================================
 
         val currentCycleStart =
-            todayStart
+            todayMidnight
 
 
         // ====================================================
-        // ACTUAL NETWORKSTATS
+        // ACTUAL MOBILE DATA FROM DAILY START
         // ====================================================
 
         val actualUsage =
             dataRepository.getCustomUsage(
-                currentCycleStart
+                todayStart
             )
 
 
         // ====================================================
-        // RUNTIME STORAGE
+        // RUNTIME PREFERENCES
         // ====================================================
 
         val runtimePreferences =
@@ -678,11 +706,13 @@ class DataMonitorService : Service() {
                 Context.MODE_PRIVATE
             )
 
+
         val runtimeCycle =
             runtimePreferences.getLong(
                 KEY_RUNTIME_CYCLE,
                 0L
             )
+
 
         val runtimeWasEnabled =
             runtimePreferences.getBoolean(
@@ -690,11 +720,13 @@ class DataMonitorService : Service() {
                 false
             )
 
+
         val baselineDownload =
             runtimePreferences.getLong(
                 KEY_BASELINE_DOWNLOAD,
                 0L
             )
+
 
         val baselineUpload =
             runtimePreferences.getLong(
@@ -702,21 +734,21 @@ class DataMonitorService : Service() {
                 0L
             )
 
+
         val storedFrozen =
             getFrozenCustomUsage()
+
 
         val storedFrozenCycle =
             getFrozenCustomCycle()
 
 
         // ====================================================
-        // CASE 1
-        // NEW DAILY CYCLE
+        // NEW MIDNIGHT CYCLE
         // ====================================================
 
         if (
-            runtimeCycle !=
-            currentCycleStart
+            runtimeCycle != currentCycleStart
         ) {
 
             saveRuntimeState(
@@ -734,6 +766,7 @@ class DataMonitorService : Service() {
                     actualUsage.uploadBytes
             )
 
+
             saveFrozenCustomUsage(
 
                 usage =
@@ -742,6 +775,7 @@ class DataMonitorService : Service() {
                 cycleStart =
                     currentCycleStart
             )
+
 
             return CustomCalculation(
 
@@ -755,8 +789,7 @@ class DataMonitorService : Service() {
 
 
         // ====================================================
-        // CASE 2
-        // OFF -> ON
+        // DAILY PLAN OFF -> ON
         // ====================================================
 
         if (
@@ -778,9 +811,6 @@ class DataMonitorService : Service() {
                     actualUsage.uploadBytes
             )
 
-            /*
-             * Keep frozen Custom value exactly as it is.
-             */
 
             val resumedUsage =
                 if (
@@ -795,19 +825,32 @@ class DataMonitorService : Service() {
                     emptyUsage()
                 }
 
+
+            val cappedResumedUsage =
+                capUsageToDailyPlan(
+
+                    usage =
+                        resumedUsage,
+
+                    dailyLimitBytes =
+                        plan.totalDataBytes
+                )
+
+
             saveFrozenCustomUsage(
 
                 usage =
-                    resumedUsage,
+                    cappedResumedUsage,
 
                 cycleStart =
                     currentCycleStart
             )
 
+
             return CustomCalculation(
 
                 usage =
-                    resumedUsage,
+                    cappedResumedUsage,
 
                 cycleStart =
                     currentCycleStart
@@ -816,8 +859,7 @@ class DataMonitorService : Service() {
 
 
         // ====================================================
-        // CASE 3
-        // DAILY PLAN ALREADY ON
+        // NEW DOWNLOAD/UPLOAD SINCE LAST CHECK
         // ====================================================
 
         val downloadDelta =
@@ -827,6 +869,7 @@ class DataMonitorService : Service() {
                     )
                 .coerceAtLeast(0L)
 
+
         val uploadDelta =
             (
                     actualUsage.uploadBytes -
@@ -834,32 +877,10 @@ class DataMonitorService : Service() {
                     )
                 .coerceAtLeast(0L)
 
-        val totalDelta =
-            downloadDelta +
-                    uploadDelta
-
 
         // ====================================================
-        // ADD ONLY NEW DATA
+        // OLD FROZEN CUSTOM
         // ====================================================
-
-        val frozenTotal =
-            if (
-                storedFrozenCycle ==
-                currentCycleStart
-            ) {
-
-                storedFrozen.totalBytes
-
-            } else {
-
-                0L
-            }
-
-        val finalTotal =
-            frozenTotal +
-                    totalDelta
-
 
         val frozenDownload =
             if (
@@ -889,16 +910,21 @@ class DataMonitorService : Service() {
             }
 
 
+        // ====================================================
+        // ADD NEW DATA
+        // ====================================================
+
         val finalDownload =
             frozenDownload +
                     downloadDelta
+
 
         val finalUpload =
             frozenUpload +
                     uploadDelta
 
 
-        val finalUsage =
+        val rawUsage =
             DataUsageManager.UsageResult(
 
                 downloadBytes =
@@ -908,7 +934,23 @@ class DataMonitorService : Service() {
                     finalUpload,
 
                 totalBytes =
-                    finalTotal
+                    finalDownload +
+                            finalUpload
+            )
+
+
+        // ====================================================
+        // DAILY PLAN HARD LIMIT
+        // ====================================================
+
+        val finalUsage =
+            capUsageToDailyPlan(
+
+                usage =
+                    rawUsage,
+
+                dailyLimitBytes =
+                    plan.totalDataBytes
             )
 
 
@@ -933,7 +975,7 @@ class DataMonitorService : Service() {
 
 
         // ====================================================
-        // SAVE CURRENT CUSTOM
+        // SAVE CUSTOM
         // ====================================================
 
         saveFrozenCustomUsage(
@@ -953,6 +995,76 @@ class DataMonitorService : Service() {
 
             cycleStart =
                 currentCycleStart
+        )
+    }
+
+
+    // ========================================================
+    // CAP CUSTOM TO DAILY PLAN
+    // ========================================================
+
+    private fun capUsageToDailyPlan(
+
+        usage:
+        DataUsageManager.UsageResult,
+
+        dailyLimitBytes:
+        Long
+
+    ):
+            DataUsageManager.UsageResult {
+
+
+        if (
+            dailyLimitBytes <= 0L
+        ) {
+
+            return usage
+        }
+
+
+        if (
+            usage.totalBytes <=
+            dailyLimitBytes
+        ) {
+
+            return usage
+        }
+
+
+        val cappedDownload =
+            usage.downloadBytes
+                .coerceAtMost(
+                    dailyLimitBytes
+                )
+
+
+        val remainingBytes =
+            (
+                    dailyLimitBytes -
+                            cappedDownload
+                    )
+                .coerceAtLeast(0L)
+
+
+        val cappedUpload =
+            usage.uploadBytes
+                .coerceAtMost(
+                    remainingBytes
+                )
+
+
+        return DataUsageManager.UsageResult(
+
+            downloadBytes =
+                cappedDownload,
+
+            uploadBytes =
+                cappedUpload,
+
+            totalBytes =
+                cappedDownload +
+                        cappedUpload
         )
     }
 
@@ -979,7 +1091,7 @@ class DataMonitorService : Service() {
 
 
     // ========================================================
-    // TODAY'S CONFIGURED START
+    // TODAY CONFIGURED START
     // ========================================================
 
     private fun getTodayConfiguredStart(
@@ -998,70 +1110,100 @@ class DataMonitorService : Service() {
         val calendar =
             Calendar.getInstance()
 
+
         calendar.timeInMillis =
             now
 
-        calendar.set(
 
+        calendar.set(
             Calendar.HOUR_OF_DAY,
-
-            hour.coerceIn(
-                0,
-                23
-            )
+            hour.coerceIn(0, 23)
         )
+
 
         calendar.set(
-
             Calendar.MINUTE,
-
-            minute.coerceIn(
-                0,
-                59
-            )
+            minute.coerceIn(0, 59)
         )
+
 
         calendar.set(
             Calendar.SECOND,
             0
         )
 
+
         calendar.set(
             Calendar.MILLISECOND,
             0
         )
+
 
         return calendar.timeInMillis
     }
 
 
     // ========================================================
-    // MARK DAILY PLAN DISABLED
+    // TODAY MIDNIGHT
+    // ========================================================
+
+    private fun getTodayStartTime(): Long {
+
+        val calendar =
+            Calendar.getInstance()
+
+
+        calendar.set(
+            Calendar.HOUR_OF_DAY,
+            0
+        )
+
+
+        calendar.set(
+            Calendar.MINUTE,
+            0
+        )
+
+
+        calendar.set(
+            Calendar.SECOND,
+            0
+        )
+
+
+        calendar.set(
+            Calendar.MILLISECOND,
+            0
+        )
+
+
+        return calendar.timeInMillis
+    }
+
+
+    // ========================================================
+    // DAILY PLAN DISABLED
     // ========================================================
 
     private fun markDailyPlanDisabled() {
 
         getSharedPreferences(
-
             CUSTOM_RUNTIME_PREFERENCES,
-
             Context.MODE_PRIVATE
-
         )
             .edit()
             .putBoolean(
-
                 KEY_RUNTIME_ENABLED,
-
                 false
             )
             .apply()
 
-        /*
-         * Do NOT delete frozen Custom.
-         *
-         * It is required when Daily Plan is enabled again.
-         */
+
+        customUsageInitialized =
+            false
+
+        previousCustomUsage =
+            0L
     }
 
 
@@ -1086,42 +1228,26 @@ class DataMonitorService : Service() {
     ) {
 
         getSharedPreferences(
-
             CUSTOM_RUNTIME_PREFERENCES,
-
             Context.MODE_PRIVATE
-
         )
             .edit()
-
             .putLong(
-
                 KEY_RUNTIME_CYCLE,
-
                 cycle
             )
-
             .putBoolean(
-
                 KEY_RUNTIME_ENABLED,
-
                 enabled
             )
-
             .putLong(
-
                 KEY_BASELINE_DOWNLOAD,
-
                 baselineDownload
             )
-
             .putLong(
-
                 KEY_BASELINE_UPLOAD,
-
                 baselineUpload
             )
-
             .apply()
     }
 
@@ -1141,48 +1267,32 @@ class DataMonitorService : Service() {
     ) {
 
         getSharedPreferences(
-
             FROZEN_CUSTOM_PREFERENCES,
-
             Context.MODE_PRIVATE
-
         )
             .edit()
-
             .putLong(
-
                 KEY_FROZEN_DOWNLOAD,
-
                 usage.downloadBytes
             )
-
             .putLong(
-
                 KEY_FROZEN_UPLOAD,
-
                 usage.uploadBytes
             )
-
             .putLong(
-
                 KEY_FROZEN_TOTAL,
-
                 usage.totalBytes
             )
-
             .putLong(
-
                 KEY_FROZEN_CYCLE,
-
                 cycleStart
             )
-
             .apply()
     }
 
 
     // ========================================================
-    // LOAD FROZEN CUSTOM
+    // GET FROZEN CUSTOM
     // ========================================================
 
     private fun getFrozenCustomUsage():
@@ -1190,35 +1300,28 @@ class DataMonitorService : Service() {
 
         val preferences =
             getSharedPreferences(
-
                 FROZEN_CUSTOM_PREFERENCES,
-
                 Context.MODE_PRIVATE
             )
+
 
         return DataUsageManager.UsageResult(
 
             downloadBytes =
                 preferences.getLong(
-
                     KEY_FROZEN_DOWNLOAD,
-
                     0L
                 ),
 
             uploadBytes =
                 preferences.getLong(
-
                     KEY_FROZEN_UPLOAD,
-
                     0L
                 ),
 
             totalBytes =
                 preferences.getLong(
-
                     KEY_FROZEN_TOTAL,
-
                     0L
                 )
         )
@@ -1226,23 +1329,17 @@ class DataMonitorService : Service() {
 
 
     // ========================================================
-    // LOAD FROZEN CYCLE
+    // GET FROZEN CUSTOM CYCLE
     // ========================================================
 
-    private fun getFrozenCustomCycle():
-            Long {
+    private fun getFrozenCustomCycle(): Long {
 
         return getSharedPreferences(
-
             FROZEN_CUSTOM_PREFERENCES,
-
             Context.MODE_PRIVATE
-
         )
             .getLong(
-
                 KEY_FROZEN_CYCLE,
-
                 0L
             )
     }
@@ -1250,32 +1347,6 @@ class DataMonitorService : Service() {
 
     // ========================================================
     // TODAY DATA LIMIT ALERTS
-    // ========================================================
-    //
-    // IMPORTANT:
-    //
-    // TODAY -> DATA LIMIT ALERTS
-    //
-    // This function NEVER uses Custom usage.
-    //
-    // Daily Plan ON/OFF has NO effect on this function.
-    //
-    // Cycle:
-    //
-    //     12:00 AM -> next 12:00 AM
-    //
-    // Repeat OFF:
-    //
-    //     Alert only once per day.
-    //
-    // Repeat ON:
-    //
-    //     2 MB
-    //     4 MB
-    //     6 MB
-    //     8 MB
-    //     ...
-    //
     // ========================================================
 
     private fun checkTodayDataLimitAlerts(
@@ -1293,19 +1364,15 @@ class DataMonitorService : Service() {
             alerts.isEmpty()
         ) {
 
-            todayAlertUsageInitialized =
-                false
-
             previousTodayUsage =
                 currentTodayBytes
+
+            todayAlertUsageInitialized =
+                true
 
             return
         }
 
-
-        // ====================================================
-        // TODAY CYCLE
-        // ====================================================
 
         val todayCycleStart =
             getTodayStartTime()
@@ -1313,56 +1380,41 @@ class DataMonitorService : Service() {
 
         val runtimePreferences =
             getSharedPreferences(
-
                 CUSTOM_ALERT_RUNTIME_PREFERENCES,
-
                 Context.MODE_PRIVATE
             )
 
 
         val savedCycle =
             runtimePreferences.getLong(
-
                 KEY_CUSTOM_ALERT_CYCLE,
-
                 0L
             )
 
 
-        // ====================================================
-        // NEW DAY
-        // ====================================================
+        // ----------------------------------------------------
+        // New calendar day
+        // ----------------------------------------------------
 
         if (
-            savedCycle !=
-            todayCycleStart
+            savedCycle != todayCycleStart
         ) {
 
             runtimePreferences
                 .edit()
                 .putLong(
-
                     KEY_CUSTOM_ALERT_CYCLE,
-
                     todayCycleStart
                 )
                 .apply()
 
 
-            // Start today's alert tracking
-            // from zero.
+            previousTodayUsage =
+                0L
 
             todayAlertUsageInitialized =
                 true
 
-            previousTodayUsage =
-                0L
-
-
-            /*
-             * Reset all Data Limit Alert thresholds
-             * for the new calendar day.
-             */
 
             for (
             alert in alerts
@@ -1383,37 +1435,27 @@ class DataMonitorService : Service() {
         }
 
 
-        // ====================================================
-        // FIRST READING
-        // ====================================================
-        //
-        // Start from zero.
-        //
-        // This is important if:
-        //
-        // Today = 30 MB
-        // Alert = 2 MB
-        //
-        // The system should not silently ignore
-        // the already reached threshold.
-        //
-        // ====================================================
+        // ----------------------------------------------------
+        // First reading
+        // ----------------------------------------------------
 
         if (
             !todayAlertUsageInitialized
         ) {
 
             previousTodayUsage =
-                0L
+                currentTodayBytes
 
             todayAlertUsageInitialized =
                 true
+
+            return
         }
 
 
-        // ====================================================
-        // CHECK EVERY ALERT
-        // ====================================================
+        // ----------------------------------------------------
+        // Check alerts
+        // ----------------------------------------------------
 
         for (
         alert in alerts
@@ -1431,10 +1473,6 @@ class DataMonitorService : Service() {
             // =================================================
             // REPEAT OFF
             // =================================================
-            //
-            // One alert per calendar day.
-            //
-            // =================================================
 
             if (
                 !alert.isRepeating
@@ -1447,30 +1485,9 @@ class DataMonitorService : Service() {
                             alert.limitBytes
 
 
-                val crossed =
-                    previousTodayUsage <
-                            alert.limitBytes &&
-                            currentTodayBytes >=
-                            alert.limitBytes
-
-
-                /*
-                 * If the alert was created after the
-                 * threshold was already crossed, the
-                 * first-reading logic still allows it.
-                 */
-
-                val reachedOnFirstCheck =
-                    previousTodayUsage == 0L &&
-                            currentTodayBytes >=
-                            alert.limitBytes
-
-
                 if (
-                    (
-                            crossed ||
-                                    reachedOnFirstCheck
-                            ) &&
+                    currentTodayBytes >=
+                    alert.limitBytes &&
                     !alreadyTriggered
                 ) {
 
@@ -1500,29 +1517,15 @@ class DataMonitorService : Service() {
 
             } else {
 
-                // =================================================
+                // =============================================
                 // REPEAT ON
-                // =================================================
-                //
-                // Example:
-                //
-                // Limit = 2 MB
-                //
-                // 2 MB  -> alert
-                // 4 MB  -> alert
-                // 6 MB  -> alert
-                // 8 MB  -> alert
-                //
-                // =================================================
-
-                val sameCycle =
-                    alert.lastTriggeredCycleStartTime ==
-                            todayCycleStart
-
+                // =============================================
 
                 val nextThreshold =
+
                     if (
-                        sameCycle &&
+                        alert.lastTriggeredCycleStartTime ==
+                        todayCycleStart &&
                         alert.lastTriggeredThreshold >=
                         alert.limitBytes
                     ) {
@@ -1541,19 +1544,8 @@ class DataMonitorService : Service() {
                     nextThreshold
                 ) {
 
-                    /*
-                     * Find the latest threshold that has
-                     * already been reached.
-                     *
-                     * Example:
-                     *
-                     * Current = 849 MB
-                     * Limit = 2 MB
-                     *
-                     * Reached threshold = 848 MB
-                     */
-
                     val reachedThreshold =
+
                         (
                                 currentTodayBytes /
                                         alert.limitBytes
@@ -1561,14 +1553,9 @@ class DataMonitorService : Service() {
                                 alert.limitBytes
 
 
-                    /*
-                     * Do not send the same threshold twice.
-                     */
-
                     if (
                         reachedThreshold >
-                        alert.lastTriggeredThreshold ||
-                        !sameCycle
+                        alert.lastTriggeredThreshold
                     ) {
 
                         sendTodayDataLimitAlertNotification(
@@ -1598,61 +1585,13 @@ class DataMonitorService : Service() {
         }
 
 
-        // ====================================================
-        // SAVE CURRENT TODAY USAGE
-        // ====================================================
-
         previousTodayUsage =
             currentTodayBytes
     }
 
 
     // ========================================================
-    // TODAY START TIME
-    // ========================================================
-
-    private fun getTodayStartTime():
-            Long {
-
-        val calendar =
-            Calendar.getInstance()
-
-        calendar.set(
-            Calendar.HOUR_OF_DAY,
-            0
-        )
-
-        calendar.set(
-            Calendar.MINUTE,
-            0
-        )
-
-        calendar.set(
-            Calendar.SECOND,
-            0
-        )
-
-        calendar.set(
-            Calendar.MILLISECOND,
-            0
-        )
-
-        return calendar.timeInMillis
-    }
-
-
-    // ========================================================
     // DAILY PLAN ALERTS
-    // ========================================================
-    //
-    // IMPORTANT:
-    //
-    // CUSTOM -> DAILY DATA PLAN
-    //
-    // This function uses the Custom value calculated above.
-    //
-    // It does NOT use Today.
-    //
     // ========================================================
 
     private fun checkDailyPlanAlerts(
@@ -1668,10 +1607,6 @@ class DataMonitorService : Service() {
 
     ) {
 
-        // ====================================================
-        // INVALID PLAN
-        // ====================================================
-
         if (
             plan.totalDataBytes <= 0L
         ) {
@@ -1680,9 +1615,9 @@ class DataMonitorService : Service() {
         }
 
 
-        // ====================================================
-        // RESET ALERTS FOR NEW CUSTOM CYCLE
-        // ====================================================
+        // ----------------------------------------------------
+        // Reset alerts on new midnight cycle
+        // ----------------------------------------------------
 
         var workingPlan =
             plan
@@ -1720,9 +1655,9 @@ class DataMonitorService : Service() {
         }
 
 
-        // ====================================================
-        // CHECK ALERTS
-        // ====================================================
+        // ----------------------------------------------------
+        // Check every Daily Alert
+        // ----------------------------------------------------
 
         var changed =
             false
@@ -1732,7 +1667,6 @@ class DataMonitorService : Service() {
             workingPlan.alerts.map {
 
                     alert ->
-
 
                 // --------------------------------------------
                 // Disabled
@@ -1771,7 +1705,7 @@ class DataMonitorService : Service() {
 
 
                 // --------------------------------------------
-                // Limit cannot exceed Daily Plan
+                // Limit cannot exceed total plan
                 // --------------------------------------------
 
                 if (
@@ -1784,7 +1718,7 @@ class DataMonitorService : Service() {
 
 
                 // --------------------------------------------
-                // CUSTOM VALUE
+                // CURRENT CUSTOM REACHED LIMIT
                 // --------------------------------------------
 
                 if (
@@ -1813,9 +1747,9 @@ class DataMonitorService : Service() {
             }
 
 
-        // ====================================================
-        // SAVE
-        // ====================================================
+        // ----------------------------------------------------
+        // Save
+        // ----------------------------------------------------
 
         if (
             changed ||
@@ -1839,7 +1773,7 @@ class DataMonitorService : Service() {
 
 
     // ========================================================
-    // MONITORING NOTIFICATION CHANNEL
+    // MONITOR NOTIFICATION CHANNEL
     // ========================================================
 
     private fun createMonitorNotificationChannel() {
@@ -2101,7 +2035,7 @@ class DataMonitorService : Service() {
 
 
     // ========================================================
-    // TODAY DATA LIMIT ALERT
+    // TODAY DATA ALERT NOTIFICATION
     // ========================================================
 
     private fun sendTodayDataLimitAlertNotification(
@@ -2137,7 +2071,7 @@ class DataMonitorService : Service() {
 
 
     // ========================================================
-    // DAILY PLAN ALERT
+    // DAILY PLAN ALERT NOTIFICATION
     // ========================================================
 
     private fun sendDailyAlertNotification(
@@ -2217,6 +2151,7 @@ class DataMonitorService : Service() {
             )
 
                 .setSmallIcon(
+
                     android.R.drawable
                         .ic_dialog_alert
                 )
@@ -2269,12 +2204,15 @@ class DataMonitorService : Service() {
             TrafficStats
                 .getMobileRxBytes()
 
+
         previousTxBytes =
             TrafficStats
                 .getMobileTxBytes()
 
+
         previousSpeedTime =
             System.currentTimeMillis()
+
 
         speedInitialized =
             true
@@ -2282,7 +2220,7 @@ class DataMonitorService : Service() {
 
 
     // ========================================================
-    // NETWORK SPEED
+    // MOBILE NETWORK SPEED
     // ========================================================
 
     private fun calculateNetworkSpeed():
@@ -2292,9 +2230,11 @@ class DataMonitorService : Service() {
             TrafficStats
                 .getMobileRxBytes()
 
+
         val currentTx =
             TrafficStats
                 .getMobileTxBytes()
+
 
         val currentTime =
             System.currentTimeMillis()
@@ -2319,6 +2259,7 @@ class DataMonitorService : Service() {
             speedInitialized =
                 true
 
+
             return Pair(
                 "0 KB/s",
                 "0 KB/s"
@@ -2342,7 +2283,12 @@ class DataMonitorService : Service() {
         }
 
 
-        val rxDifference =
+        val seconds =
+            elapsed /
+                    1000.0
+
+
+        val downloadBytes =
             (
                     currentRx -
                             previousRxBytes
@@ -2350,7 +2296,7 @@ class DataMonitorService : Service() {
                 .coerceAtLeast(0L)
 
 
-        val txDifference =
+        val uploadBytes =
             (
                     currentTx -
                             previousTxBytes
@@ -2358,74 +2304,59 @@ class DataMonitorService : Service() {
                 .coerceAtLeast(0L)
 
 
-        val seconds =
-            elapsed / 1000.0
+        val downloadSpeed =
+            formatSpeed(
+                downloadBytes /
+                        seconds
+            )
 
 
-        val downloadBytesPerSecond =
-            (
-                    rxDifference /
-                            seconds
-                    )
-                .toLong()
-
-
-        val uploadBytesPerSecond =
-            (
-                    txDifference /
-                            seconds
-                    )
-                .toLong()
+        val uploadSpeed =
+            formatSpeed(
+                uploadBytes /
+                        seconds
+            )
 
 
         previousRxBytes =
             currentRx
 
+
         previousTxBytes =
             currentTx
+
 
         previousSpeedTime =
             currentTime
 
 
         return Pair(
-
-            formatSpeed(
-                downloadBytesPerSecond
-            ),
-
-            formatSpeed(
-                uploadBytesPerSecond
-            )
+            downloadSpeed,
+            uploadSpeed
         )
     }
 
 
     // ========================================================
-    // SPEED FORMAT
+    // FORMAT SPEED
     // ========================================================
 
     private fun formatSpeed(
         bytesPerSecond:
-        Long
+        Double
     ): String {
-
-        if (
-            bytesPerSecond <= 0L
-        ) {
-
-            return "0 KB/s"
-        }
-
 
         val kb =
             1024.0
 
         val mb =
-            kb * 1024.0
+            1024.0 *
+                    1024.0
 
         val gb =
-            mb * 1024.0
+            1024.0 *
+                    1024.0 *
+                    1024.0
 
 
         return when {
@@ -2433,39 +2364,27 @@ class DataMonitorService : Service() {
             bytesPerSecond >= gb ->
 
                 String.format(
-
                     Locale.US,
-
                     "%.2f GB/s",
-
-                    bytesPerSecond /
-                            gb
+                    bytesPerSecond / gb
                 )
 
 
             bytesPerSecond >= mb ->
 
                 String.format(
-
                     Locale.US,
-
                     "%.2f MB/s",
-
-                    bytesPerSecond /
-                            mb
+                    bytesPerSecond / mb
                 )
 
 
             else ->
 
                 String.format(
-
                     Locale.US,
-
                     "%.0f KB/s",
-
-                    bytesPerSecond /
-                            kb
+                    bytesPerSecond / kb
                 )
         }
     }
@@ -2517,7 +2436,6 @@ class DataMonitorService : Service() {
         if (
             Build.VERSION.SDK_INT >=
             Build.VERSION_CODES.M &&
-
             !Settings.canDrawOverlays(
                 this
             )
@@ -2530,7 +2448,33 @@ class DataMonitorService : Service() {
 
 
         // ----------------------------------------------------
-        // Create overlay if required
+        // User setting
+        // ----------------------------------------------------
+
+        val preferences =
+            getSharedPreferences(
+                APP_SETTINGS,
+                Context.MODE_PRIVATE
+            )
+
+
+        val enabled =
+            preferences.getBoolean(
+                KEY_STATUS_BAR_SPEED_ENABLED,
+                DEFAULT_STATUS_BAR_SPEED_ENABLED
+            )
+
+
+        if (!enabled) {
+
+            removeSpeedOverlay()
+
+            return
+        }
+
+
+        // ----------------------------------------------------
+        // Create if required
         // ----------------------------------------------------
 
         if (
@@ -2542,16 +2486,75 @@ class DataMonitorService : Service() {
 
 
         // ----------------------------------------------------
-        // NO ARROW
+        // Apply current settings
         // ----------------------------------------------------
+
+        val x =
+            preferences.getInt(
+                KEY_STATUS_BAR_SPEED_X,
+                DEFAULT_STATUS_BAR_SPEED_X
+            )
+
+
+        val y =
+            preferences.getInt(
+                KEY_STATUS_BAR_SPEED_Y,
+                DEFAULT_STATUS_BAR_SPEED_Y
+            )
+
+
+        val textSize =
+            preferences.getFloat(
+                KEY_STATUS_BAR_SPEED_TEXT_SIZE,
+                DEFAULT_STATUS_BAR_SPEED_TEXT_SIZE
+            )
+
 
         speedTextView?.text =
             downloadSpeed
+
+
+        speedTextView?.textSize =
+            textSize
+
+
+        // ----------------------------------------------------
+        // Update X/Y without recreating overlay
+        // ----------------------------------------------------
+
+        val params =
+            speedTextView?.layoutParams
+                    as? WindowManager.LayoutParams
+
+
+        if (
+            params != null
+        ) {
+
+            params.x =
+                x
+
+            params.y =
+                y
+
+
+            try {
+
+                windowManager?.updateViewLayout(
+                    speedTextView,
+                    params
+                )
+
+            } catch (_: Exception) {
+
+                // Ignore layout update errors.
+            }
+        }
     }
 
 
     // ========================================================
-    // CREATE SPEED OVERLAY
+    // CREATE STATUS BAR OVERLAY
     // ========================================================
 
     private fun createSpeedOverlay() {
@@ -2567,7 +2570,6 @@ class DataMonitorService : Service() {
         if (
             Build.VERSION.SDK_INT >=
             Build.VERSION_CODES.M &&
-
             !Settings.canDrawOverlays(
                 this
             )
@@ -2575,6 +2577,34 @@ class DataMonitorService : Service() {
 
             return
         }
+
+
+        val preferences =
+            getSharedPreferences(
+                APP_SETTINGS,
+                Context.MODE_PRIVATE
+            )
+
+
+        val x =
+            preferences.getInt(
+                KEY_STATUS_BAR_SPEED_X,
+                DEFAULT_STATUS_BAR_SPEED_X
+            )
+
+
+        val y =
+            preferences.getInt(
+                KEY_STATUS_BAR_SPEED_Y,
+                DEFAULT_STATUS_BAR_SPEED_Y
+            )
+
+
+        val textSize =
+            preferences.getFloat(
+                KEY_STATUS_BAR_SPEED_TEXT_SIZE,
+                DEFAULT_STATUS_BAR_SPEED_TEXT_SIZE
+            )
 
 
         windowManager =
@@ -2587,13 +2617,20 @@ class DataMonitorService : Service() {
             TextView(this)
 
 
-        // No arrow in initial value.
+        // ----------------------------------------------------
+        // No arrow
+        // ----------------------------------------------------
+
         textView.text =
             "0 KB/s"
 
 
+        // ----------------------------------------------------
+        // User selected text size
+        // ----------------------------------------------------
+
         textView.textSize =
-            12f
+            textSize
 
 
         textView.setTextColor(
@@ -2614,9 +2651,9 @@ class DataMonitorService : Service() {
         )
 
 
-        // ----------------------------------------------------
-        // Window type
-        // ----------------------------------------------------
+        // ====================================================
+        // WINDOW TYPE
+        // ====================================================
 
         val layoutType =
 
@@ -2625,43 +2662,51 @@ class DataMonitorService : Service() {
                 Build.VERSION_CODES.O
             ) {
 
-                WindowManager.LayoutParams
+                WindowManager
+                    .LayoutParams
                     .TYPE_APPLICATION_OVERLAY
 
             } else {
 
                 @Suppress("DEPRECATION")
 
-                WindowManager.LayoutParams
+                WindowManager
+                    .LayoutParams
                     .TYPE_PHONE
             }
 
 
-        // ----------------------------------------------------
-        // Layout params
-        // ----------------------------------------------------
+        // ====================================================
+        // LAYOUT PARAMS
+        // ====================================================
 
         val layoutParams =
             WindowManager.LayoutParams(
 
-                WindowManager.LayoutParams
+                WindowManager
+                    .LayoutParams
                     .WRAP_CONTENT,
 
-                WindowManager.LayoutParams
+                WindowManager
+                    .LayoutParams
                     .WRAP_CONTENT,
 
                 layoutType,
 
-                WindowManager.LayoutParams
+                WindowManager
+                    .LayoutParams
                     .FLAG_NOT_FOCUSABLE or
 
-                        WindowManager.LayoutParams
+                        WindowManager
+                            .LayoutParams
                             .FLAG_NOT_TOUCHABLE or
 
-                        WindowManager.LayoutParams
+                        WindowManager
+                            .LayoutParams
                             .FLAG_LAYOUT_IN_SCREEN or
 
-                        WindowManager.LayoutParams
+                        WindowManager
+                            .LayoutParams
                             .FLAG_LAYOUT_NO_LIMITS,
 
                 PixelFormat.TRANSLUCENT
@@ -2673,16 +2718,20 @@ class DataMonitorService : Service() {
                     Gravity.START
 
 
-        // ----------------------------------------------------
-        // Position
-        // ----------------------------------------------------
+        // ====================================================
+        // USER POSITION
+        // ====================================================
 
         layoutParams.x =
-            420
+            x
 
         layoutParams.y =
-            6
+            y
 
+
+        // ====================================================
+        // ADD OVERLAY
+        // ====================================================
 
         try {
 
@@ -2706,7 +2755,7 @@ class DataMonitorService : Service() {
 
 
     // ========================================================
-    // REMOVE SPEED OVERLAY
+    // REMOVE STATUS BAR OVERLAY
     // ========================================================
 
     private fun removeSpeedOverlay() {
@@ -2719,7 +2768,9 @@ class DataMonitorService : Service() {
         try {
 
             windowManager
-                ?.removeView(view)
+                ?.removeView(
+                    view
+                )
 
         } catch (_: Exception) {
 
@@ -2733,7 +2784,7 @@ class DataMonitorService : Service() {
 
 
     // ========================================================
-    // MOBILE DATA ACTIVE
+    // MOBILE DATA ACTIVE CHECK
     // ========================================================
 
     private fun isMobileDataActive():
@@ -2746,7 +2797,8 @@ class DataMonitorService : Service() {
 
 
         val network =
-            connectivityManager.activeNetwork
+            connectivityManager
+                .activeNetwork
                 ?: return false
 
 
@@ -2775,7 +2827,6 @@ class DataMonitorService : Service() {
         return resources
             .configuration
             .orientation ==
-
                 android.content.res.Configuration
                     .ORIENTATION_PORTRAIT
     }
@@ -2790,45 +2841,39 @@ class DataMonitorService : Service() {
         Long
     ): String {
 
+        val mb =
+            1024L *
+                    1024L
+
+
         val gb =
             1024L *
                     1024L *
                     1024L
 
 
-        if (
+        return if (
             bytes >= gb
         ) {
 
-            val value =
+            String.format(
+
+                Locale.US,
+
+                "%.2f GB",
+
                 bytes /
                         (
                                 1024.0 *
                                         1024.0 *
                                         1024.0
                                 )
-
-
-            return String.format(
-
-                Locale.US,
-
-                "%.2f GB",
-
-                value
             )
+
+        } else {
+
+            "${bytes / mb} MB"
         }
-
-
-        val mb =
-            bytes /
-                    (
-                            1024L *
-                                    1024L
-                            )
-
-
-        return "$mb MB"
     }
 
 
@@ -2838,19 +2883,65 @@ class DataMonitorService : Service() {
 
     companion object {
 
+        // ----------------------------------------------------
+        // Monitoring
+        // ----------------------------------------------------
+
         private const val MONITOR_INTERVAL =
             3000L
 
 
-        // ----------------------------------------------------
-        // App settings
-        // ----------------------------------------------------
-
         private const val APP_SETTINGS =
             "datadrift_app_settings"
 
+
         private const val KEY_MONITORING_ENABLED =
             "monitoring_enabled"
+
+
+        // ----------------------------------------------------
+        // STATUS BAR SPEED SETTINGS
+        // ----------------------------------------------------
+        //
+        // These four constants are PUBLIC because
+        // MainActivity will use the same keys.
+        //
+        // ----------------------------------------------------
+
+        const val KEY_STATUS_BAR_SPEED_ENABLED =
+            "status_bar_speed_enabled"
+
+
+        const val KEY_STATUS_BAR_SPEED_X =
+            "status_bar_speed_x"
+
+
+        const val KEY_STATUS_BAR_SPEED_Y =
+            "status_bar_speed_y"
+
+
+        const val KEY_STATUS_BAR_SPEED_TEXT_SIZE =
+            "status_bar_speed_text_size"
+
+
+        // ----------------------------------------------------
+        // Default overlay settings
+        // ----------------------------------------------------
+
+        const val DEFAULT_STATUS_BAR_SPEED_ENABLED =
+            true
+
+
+        const val DEFAULT_STATUS_BAR_SPEED_X =
+            420
+
+
+        const val DEFAULT_STATUS_BAR_SPEED_Y =
+            6
+
+
+        const val DEFAULT_STATUS_BAR_SPEED_TEXT_SIZE =
+            12f
 
 
         // ----------------------------------------------------
@@ -2859,6 +2950,7 @@ class DataMonitorService : Service() {
 
         private const val MONITOR_CHANNEL_ID =
             "datadrift_monitor_channel"
+
 
         private const val MONITOR_NOTIFICATION_ID =
             1001
@@ -2872,10 +2964,6 @@ class DataMonitorService : Service() {
             "datadrift_alerts"
 
 
-        /*
-         * Existing ID name is kept so previously saved
-         * alert IDs continue to work.
-         */
         private const val CUSTOM_ALERT_NOTIFICATION_BASE =
             3000
 
@@ -2891,14 +2979,18 @@ class DataMonitorService : Service() {
         private const val CUSTOM_RUNTIME_PREFERENCES =
             "datadrift_custom_runtime"
 
+
         private const val KEY_RUNTIME_CYCLE =
             "custom_runtime_cycle"
+
 
         private const val KEY_RUNTIME_ENABLED =
             "custom_runtime_enabled"
 
+
         private const val KEY_BASELINE_DOWNLOAD =
             "custom_baseline_download"
+
 
         private const val KEY_BASELINE_UPLOAD =
             "custom_baseline_upload"
@@ -2911,32 +3003,30 @@ class DataMonitorService : Service() {
         private const val FROZEN_CUSTOM_PREFERENCES =
             "datadrift_custom_frozen"
 
+
         private const val KEY_FROZEN_DOWNLOAD =
             "download_bytes"
+
 
         private const val KEY_FROZEN_UPLOAD =
             "upload_bytes"
 
+
         private const val KEY_FROZEN_TOTAL =
             "total_bytes"
+
 
         private const val KEY_FROZEN_CYCLE =
             "cycle_start"
 
 
         // ----------------------------------------------------
-        // Today Data Limit Alert runtime
-        // ----------------------------------------------------
-        //
-        // Existing preference name is retained so we don't
-        // unnecessarily create another storage system.
-        //
-        // The stored cycle is now TODAY's midnight cycle.
-        //
+        // Alert runtime
         // ----------------------------------------------------
 
         private const val CUSTOM_ALERT_RUNTIME_PREFERENCES =
             "datadrift_custom_alert_runtime"
+
 
         private const val KEY_CUSTOM_ALERT_CYCLE =
             "custom_alert_cycle"
